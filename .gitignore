@@ -1,0 +1,41 @@
+# Go build output
+bin/
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test and coverage artifacts
+*.test
+coverage.out
+.coverprofile
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+
+# Local storage and generated data
+data/
+uploads/
+tmp/
+temp/
+
+# Logs
+*.log
+logs/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dependency and cache directories
+.cache/

@@ -1,0 +1,78 @@
+openapi: 3.0.3
+info:
+  title: Desktop App Update Server
+  version: 0.1.0
+paths:
+  /healthz:
+    get:
+      responses:
+        "200":
+          description: Service is healthy.
+  /api/auth/login:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Admin JWT token.
+  /api/latest/{appSlug}:
+    get:
+      parameters:
+        - name: appSlug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: channel
+          in: query
+          schema:
+            type: string
+        - name: platform
+          in: query
+          schema:
+            type: string
+        - name: arch
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest update manifest.
+  /api/latest/{appSlug}/update.json:
+    get:
+      responses:
+        "200":
+          description: Generic JSON update manifest.
+  /api/latest/{appSlug}/latest.yml:
+    get:
+      responses:
+        "200":
+          description: Electron latest.yml feed.
+  /api/latest/{appSlug}/appcast.xml:
+    get:
+      responses:
+        "200":
+          description: Appcast XML feed.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
