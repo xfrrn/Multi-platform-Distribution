@@ -26,6 +26,16 @@ Desktop app update server written in Go. It manages apps, releases, uploaded art
    go run ./cmd/server
    ```
 
+3. Start the web console:
+
+   ```powershell
+   cd web
+   npm install
+   npm run dev
+   ```
+
+   Vite serves the console at `http://localhost:5173` and proxies `/api` to `http://localhost:8080`.
+
 ## Core endpoints
 
 - `GET /healthz`
