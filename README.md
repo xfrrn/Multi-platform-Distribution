@@ -12,13 +12,14 @@ Desktop app update server written in Go. It manages apps, releases, uploaded art
 
 ## Local setup
 
-1. Start PostgreSQL and the API server:
+1. Start PostgreSQL, the API server, and the web console:
 
    ```powershell
-   docker compose -f deploy/docker-compose.yml up -d postgres update-server
+   docker compose -f deploy/docker-compose.yml up -d postgres update-server web
    ```
 
    The server runs database migrations automatically when `AUTO_MIGRATE=true`.
+   The web console is available at `http://localhost:5173`.
 
 2. For direct local development, copy `.env.example` values into your shell, start PostgreSQL, then run:
 
