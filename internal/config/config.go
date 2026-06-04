@@ -31,6 +31,7 @@ type Config struct {
 	AnyshareBaseURL    string
 	AnyshareShareLink  string
 	AnyshareUploadPath string
+	AnyshareCookie     string
 	AnyshareTimeout    time.Duration
 }
 
@@ -60,6 +61,7 @@ func Load() Config {
 		AnyshareBaseURL:    strings.TrimRight(env("ANYSHARE_BASE_URL", "https://yunpan.ustb.edu.cn"), "/"),
 		AnyshareShareLink:  env("ANYSHARE_SHARING_LINK", ""),
 		AnyshareUploadPath: env("ANYSHARE_UPLOAD_PATH", ""),
+		AnyshareCookie:     env("ANYSHARE_COOKIE", ""),
 		AnyshareTimeout:    envDuration("ANYSHARE_TIMEOUT", 10*time.Minute),
 	}
 }

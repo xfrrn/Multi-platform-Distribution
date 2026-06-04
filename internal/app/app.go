@@ -73,6 +73,7 @@ func New(cfg config.Config) (*App, error) {
 			BaseURL:     cfg.AnyshareBaseURL,
 			SharingLink: cfg.AnyshareShareLink,
 			UploadPath:  cfg.AnyshareUploadPath,
+			Cookie:      cfg.AnyshareCookie,
 			Timeout:     cfg.AnyshareTimeout,
 		})
 		if err != nil {

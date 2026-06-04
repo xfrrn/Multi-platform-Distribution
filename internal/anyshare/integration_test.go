@@ -21,6 +21,7 @@ func TestRealAnyshareUploadDownload(t *testing.T) {
 		BaseURL:     os.Getenv("ANYSHARE_BASE_URL"),
 		SharingLink: os.Getenv("ANYSHARE_SHARING_LINK"),
 		UploadPath:  os.Getenv("ANYSHARE_UPLOAD_PATH"),
+		Cookie:      os.Getenv("ANYSHARE_COOKIE"),
 		Timeout:     30 * time.Second,
 	})
 	if err != nil {

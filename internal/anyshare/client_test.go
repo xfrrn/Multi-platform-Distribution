@@ -112,6 +112,127 @@ func TestClientUploadAndResolveDownload(t *testing.T) {
 	}
 }
 
+func TestClientUploadRefreshesAuthorizationFromCookie(t *testing.T) {
+	const sharingID = "AA60DDB0BEB3F141A98A7DF75B5F5D7992"
+	var sawRefresh bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/anyshare/oauth2/login/refreshToken":
+			sawRefresh = true
+			if r.URL.Query().Get("force") != "false" {
+				t.Fatalf("expected non-forced initial refresh, got %q", r.URL.RawQuery)
+			}
+			w.Header().Add("Set-Cookie", "Authorization=Bearer login-token; Path=/")
+			writeJSON(w, map[string]any{"ok": true})
+		case "/api/efast/v1/file/osbeginupload":
+			if r.Header.Get("Authorization") != "Bearer login-token" {
+				t.Fatalf("expected refreshed authorization on beginupload, got %q", r.Header.Get("Authorization"))
+			}
+			writeJSON(w, map[string]any{
+				"docid": "gns://file-docid",
+				"rev":   "file-rev",
+				"authrequest": []string{
+					"POST",
+					serverURL(r) + "/upload",
+					"AWSAccessKeyId: key",
+					"Content-Type: application/octet-stream",
+					"Policy: policy",
+					"Signature: signature",
+					"key: object-key",
+				},
+			})
+		case "/upload":
+			w.WriteHeader(http.StatusNoContent)
+		case "/api/efast/v1/file/osendupload":
+			if r.Header.Get("Authorization") != "Bearer login-token" {
+				t.Fatalf("expected refreshed authorization on endupload, got %q", r.Header.Get("Authorization"))
+			}
+			writeJSON(w, map[string]any{"ok": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(context.Background(), Config{
+		BaseURL:     server.URL,
+		SharingLink: server.URL + "/anyshare/zh-cn/link/" + sharingID,
+		UploadPath:  "gns://upload-dir",
+		Cookie:      "SESSION=logged-in",
+		Timeout:     time.Second,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.Upload(context.Background(), "installer.exe", strings.NewReader("payload"))
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	if !sawRefresh {
+		t.Fatal("expected refresh token endpoint to be called")
+	}
+}
+
+func TestClientRetriesPostJSONAfterUnauthorizedRefresh(t *testing.T) {
+	const sharingID = "AA60DDB0BEB3F141A98A7DF75B5F5D7992"
+	var beginCalls int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/anyshare/oauth2/login/refreshToken":
+			if r.URL.Query().Get("force") == "true" {
+				w.Header().Add("Set-Cookie", "Authorization=Bearer fresh-token; Path=/")
+			} else {
+				w.Header().Add("Set-Cookie", "Authorization=Bearer stale-token; Path=/")
+			}
+			writeJSON(w, map[string]any{"ok": true})
+		case "/api/efast/v1/file/osdownload":
+			beginCalls++
+			if beginCalls == 1 {
+				if r.Header.Get("Authorization") != "Bearer stale-token" {
+					t.Fatalf("expected stale authorization before retry, got %q", r.Header.Get("Authorization"))
+				}
+				http.Error(w, "expired", http.StatusUnauthorized)
+				return
+			}
+			if r.Header.Get("Authorization") != "Bearer fresh-token" {
+				t.Fatalf("expected fresh authorization after retry, got %q", r.Header.Get("Authorization"))
+			}
+			writeJSON(w, map[string]any{
+				"size":        7,
+				"authrequest": []string{"GET", serverURL(r) + "/direct/installer.exe?token=download"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(context.Background(), Config{
+		BaseURL:     server.URL,
+		SharingLink: server.URL + "/link/" + sharingID,
+		UploadPath:  "gns://upload-dir",
+		Cookie:      "SESSION=logged-in",
+		Timeout:     time.Second,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	download, err := client.ResolveDownload(context.Background(), "gns://file-docid", "file-rev", "installer.exe")
+	if err != nil {
+		t.Fatalf("resolve download: %v", err)
+	}
+	if !strings.Contains(download.URL, "/direct/installer.exe?token=download") {
+		t.Fatalf("unexpected download url %s", download.URL)
+	}
+	if beginCalls != 2 {
+		t.Fatalf("expected download request to be retried once, got %d calls", beginCalls)
+	}
+}
+
 func TestClientRejectsUnexpectedDownloadAuth(t *testing.T) {
 	_, err := parseDownloadAuth([]string{"POST", "https://example.test/file"})
 	if err == nil {

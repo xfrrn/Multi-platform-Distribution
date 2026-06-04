@@ -25,6 +25,7 @@ type Config struct {
 	BaseURL     string
 	SharingLink string
 	UploadPath  string
+	Cookie      string
 	Timeout     time.Duration
 }
 
@@ -33,6 +34,7 @@ type Client struct {
 	sharingLink   string
 	sharingID     string
 	uploadPath    string
+	loginCookie   string
 	authorization string
 	httpClient    *http.Client
 	mu            sync.Mutex
@@ -89,6 +91,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		sharingLink: sharingLink,
 		sharingID:   sharingID,
 		uploadPath:  strings.TrimSpace(cfg.UploadPath),
+		loginCookie: strings.TrimSpace(cfg.Cookie),
 		httpClient: &http.Client{
 			Jar:     jar,
 			Timeout: timeout,
@@ -96,6 +99,11 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 				return http.ErrUseLastResponse
 			},
 		},
+	}
+	if client.loginCookie != "" {
+		if err := client.setCookie(client.loginCookie); err != nil {
+			return nil, err
+		}
 	}
 	return client, nil
 }
@@ -187,15 +195,28 @@ func parseSharingLink(baseURL, sharingLink string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("parse ANYSHARE_SHARING_LINK: %w", err)
 	}
-	expectedPrefix := strings.TrimRight(baseURL, "/") + "/link/"
-	if !strings.HasPrefix(share.String(), expectedPrefix) {
-		return "", "", errors.New("ANYSHARE_SHARING_LINK must start with ANYSHARE_BASE_URL/link/")
+	base, err := url.Parse(strings.TrimRight(baseURL, "/"))
+	if err != nil {
+		return "", "", fmt.Errorf("parse ANYSHARE_BASE_URL: %w", err)
 	}
-	sharingID := path.Base(share.Path)
+	if share.Scheme != base.Scheme || share.Host != base.Host {
+		return "", "", errors.New("ANYSHARE_SHARING_LINK must use ANYSHARE_BASE_URL host")
+	}
+	parts := strings.Split(strings.Trim(share.Path, "/"), "/")
+	linkIndex := -1
+	for i, part := range parts {
+		if part == "link" {
+			linkIndex = i
+		}
+	}
+	if linkIndex < 0 || linkIndex == len(parts)-1 {
+		return "", "", errors.New("ANYSHARE_SHARING_LINK must contain /link/{sharing_id}")
+	}
+	sharingID := parts[linkIndex+1]
 	if !sharingIDPattern.MatchString(sharingID) {
 		return "", "", errors.New("invalid anyshare sharing id")
 	}
-	return sharingLink, sharingID, nil
+	return strings.TrimRight(baseURL, "/") + "/link/" + sharingID, sharingID, nil
 }
 
 func (c *Client) visitSharingLink(ctx context.Context) error {
@@ -242,10 +263,95 @@ func (c *Client) visitSharingLink(ctx context.Context) error {
 func (c *Client) ensureAuthorization(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.loginCookie != "" {
+		return c.refreshAuthorizationLocked(ctx, false)
+	}
 	if c.authorization != "" {
 		return nil
 	}
 	return c.visitSharingLink(ctx)
+}
+
+func (c *Client) setCookie(rawCookie string) error {
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("parse ANYSHARE_BASE_URL: %w", err)
+	}
+	cookies := make([]*http.Cookie, 0)
+	for _, item := range strings.Split(rawCookie, ";") {
+		name, value, ok := strings.Cut(strings.TrimSpace(item), "=")
+		if !ok {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		cookies = append(cookies, &http.Cookie{Name: name, Value: value, Path: "/"})
+		if name == "Authorization" {
+			c.authorization = normalizeAuthorizationCookie(value)
+		}
+	}
+	if len(cookies) == 0 {
+		return errors.New("ANYSHARE_COOKIE did not contain any cookies")
+	}
+	c.httpClient.Jar.SetCookies(base, cookies)
+	return nil
+}
+
+func (c *Client) refreshAuthorizationLocked(ctx context.Context, force bool) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/anyshare/oauth2/login/refreshToken", nil)
+	if err != nil {
+		return err
+	}
+	query := req.URL.Query()
+	if force {
+		query.Set("force", "true")
+	} else {
+		query.Set("force", "false")
+	}
+	req.URL.RawQuery = query.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("refresh anyshare authorization: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return responseError("refresh anyshare authorization", resp)
+	}
+	if c.updateAuthorizationFromCookies(resp) {
+		return nil
+	}
+	return errors.New("anyshare Authorization cookie is missing")
+}
+
+func (c *Client) updateAuthorizationFromCookies(resp *http.Response) bool {
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "Authorization" && cookie.Value != "" {
+			c.authorization = normalizeAuthorizationCookie(cookie.Value)
+			return true
+		}
+	}
+
+	base, err := url.Parse(c.baseURL)
+	if err == nil {
+		for _, cookie := range c.httpClient.Jar.Cookies(base) {
+			if cookie.Name == "Authorization" && cookie.Value != "" {
+				c.authorization = normalizeAuthorizationCookie(cookie.Value)
+				return true
+			}
+		}
+	}
+
+	for _, header := range resp.Header.Values("Set-Cookie") {
+		if value, ok := parseRawCookie(header, "Authorization"); ok && value != "" {
+			c.authorization = normalizeAuthorizationCookie(value)
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) beginUpload(ctx context.Context, name string, size int64) (uploadConfig, error) {
@@ -325,26 +431,48 @@ func (c *Client) postJSON(ctx context.Context, endpoint string, payload any, out
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+endpoint, bytes.NewReader(data))
-	if err != nil {
-		return err
+
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+endpoint, bytes.NewReader(data))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		c.mu.Lock()
+		authorization := c.authorization
+		c.mu.Unlock()
+		if authorization != "" {
+			req.Header.Set("Authorization", authorization)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("call anyshare %s: %w", endpoint, err)
+		}
+		if resp.StatusCode == http.StatusUnauthorized && c.loginCookie != "" && attempt == 0 {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			resp.Body.Close()
+
+			c.mu.Lock()
+			c.authorization = ""
+			err = c.refreshAuthorizationLocked(ctx, true)
+			c.mu.Unlock()
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return responseError("call anyshare "+endpoint, resp)
+		}
+		if out == nil {
+			return nil
+		}
+		return json.NewDecoder(resp.Body).Decode(out)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.authorization != "" {
-		req.Header.Set("Authorization", c.authorization)
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("call anyshare %s: %w", endpoint, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return responseError("call anyshare "+endpoint, resp)
-	}
-	if out == nil {
-		return nil
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return errors.New("call anyshare failed after authorization refresh")
 }
 
 func parseDownloadAuth(auth []string) (string, error) {
@@ -395,6 +523,14 @@ func parseRawCookie(header, name string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func normalizeAuthorizationCookie(value string) string {
+	value = strings.TrimSpace(value)
+	if decoded, err := url.QueryUnescape(value); err == nil && strings.HasPrefix(decoded, "Bearer ") {
+		return decoded
+	}
+	return value
 }
 
 func sanitizeName(name string) string {
