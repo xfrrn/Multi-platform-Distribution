@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"multi-platform-distribution/internal/anyshare"
 	"multi-platform-distribution/internal/auth"
 	"multi-platform-distribution/internal/config"
 	"multi-platform-distribution/internal/domain"
@@ -185,6 +186,77 @@ func TestAdminReleaseFlow(t *testing.T) {
 	}
 }
 
+func TestAnyshareArtifactFlow(t *testing.T) {
+	repo := newMemoryRepository(t)
+	anyshareServer, anyshareClient := newMockAnyshare(t)
+	defer anyshareServer.Close()
+
+	tempDir := t.TempDir()
+	tokens := auth.NewTokenManager("test-secret", "test-issuer", time.Hour)
+	cfg := config.Config{
+		APIKey:           "ci-key",
+		StorageDriver:    "local",
+		LocalStoragePath: tempDir,
+		PublicBaseURL:    "http://updates.example.test",
+		AnyshareEnabled:  true,
+	}
+	router := NewRouter(cfg, Services{
+		Apps:      service.NewAppService(repo),
+		Releases:  service.NewReleaseService(repo),
+		Artifacts: service.NewArtifactServiceWithAnyshare(repo, storage.NewLocalStorage(tempDir, cfg.PublicBaseURL), anyshareClient, cfg.PublicBaseURL),
+		Metadata:  service.NewMetadataService(repo),
+		Stats:     service.NewStatsService(repo),
+		Auth:      service.NewAuthService(repo, tokens),
+		Tokens:    tokens,
+	})
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	login := postJSON[loginResponse](t, server, "/api/auth/login", map[string]string{
+		"email":    "admin@example.com",
+		"password": "secret-password",
+	}, "")
+	bearer := "Bearer " + login.AccessToken
+
+	app := postJSON[domain.App](t, server, "/api/apps", map[string]string{
+		"name": "Anyshare App",
+		"slug": "anyshare-app",
+	}, bearer)
+	release := postJSON[domain.Release](t, server, "/api/apps/"+app.ID.String()+"/releases", map[string]any{
+		"version":         "3.0.0",
+		"channel":         "stable",
+		"staging_percent": 100,
+		"published_at":    "2026-06-03T10:00:00Z",
+	}, bearer)
+
+	artifact := uploadArtifactWithSource(t, server, release.ID, bearer, "anyshare")
+	if artifact.SourceType != "anyshare" {
+		t.Fatalf("expected anyshare artifact, got %s", artifact.SourceType)
+	}
+	if artifact.AnyshareDocID == "" || artifact.AnyshareRev == "" || artifact.AnyshareName == "" {
+		t.Fatalf("expected anyshare metadata, got %#v", artifact)
+	}
+	expectedStableURL := "http://updates.example.test/api/artifacts/" + artifact.ID.String() + "/download"
+	if artifact.FileURL != expectedStableURL {
+		t.Fatalf("expected stable artifact url %s, got %s", expectedStableURL, artifact.FileURL)
+	}
+
+	manifest := getJSON[domain.UpdateManifest](t, server, "/api/latest/anyshare-app/update.json?platform=windows&arch=x64", "")
+	if len(manifest.Files) != 1 || manifest.Files[0].URL != expectedStableURL {
+		t.Fatalf("expected manifest to use stable url %s, got %#v", expectedStableURL, manifest.Files)
+	}
+
+	redirect := requestNoRedirect(t, server, http.MethodGet, "/api/artifacts/"+artifact.ID.String()+"/download?client_id=client-a", nil, "")
+	defer redirect.Body.Close()
+	if redirect.StatusCode != http.StatusTemporaryRedirect {
+		t.Fatalf("expected anyshare download redirect, got %d", redirect.StatusCode)
+	}
+	location := redirect.Header.Get("Location")
+	if !strings.Contains(location, "/direct/desktop-app.exe?token=download") {
+		t.Fatalf("expected resolved anyshare direct url, got %s", location)
+	}
+}
+
 func TestArchiveAndStagingFlow(t *testing.T) {
 	repo := newMemoryRepository(t)
 	server, bearer := newTestServer(t, repo)
@@ -311,6 +383,74 @@ func newTestServer(t *testing.T, repo *memoryRepository) (*httptest.Server, stri
 	return server, "Bearer " + login.AccessToken
 }
 
+func newMockAnyshare(t *testing.T) (*httptest.Server, *anyshare.Client) {
+	t.Helper()
+	const sharingID = "AA121158B8D88B4E7C9019EA24FD02E541"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		baseURL := "http://" + r.Host
+		switch r.URL.Path {
+		case "/link/" + sharingID:
+			w.Header().Add("Set-Cookie", "link_token:"+sharingID+"=anon-token; Path=/")
+			w.WriteHeader(http.StatusOK)
+		case "/api/efast/v1/file/osbeginupload":
+			if r.Header.Get("Authorization") != "Bearer anon-token" {
+				t.Fatalf("expected anyshare authorization on beginupload, got %q", r.Header.Get("Authorization"))
+			}
+			writeAnyshareJSON(w, map[string]any{
+				"docid": "gns://anyshare-docid",
+				"rev":   "anyshare-rev",
+				"authrequest": []string{
+					"POST",
+					baseURL + "/upload",
+					"AWSAccessKeyId: key",
+					"Content-Type: application/octet-stream",
+					"Policy: policy",
+					"Signature: signature",
+					"key: object-key",
+				},
+			})
+		case "/upload":
+			if err := r.ParseMultipartForm(10 << 20); err != nil {
+				t.Fatalf("parse anyshare upload: %v", err)
+			}
+			file, _, err := r.FormFile("file")
+			if err != nil {
+				t.Fatalf("expected anyshare upload file: %v", err)
+			}
+			_ = file.Close()
+			w.WriteHeader(http.StatusNoContent)
+		case "/api/efast/v1/file/osendupload":
+			writeAnyshareJSON(w, map[string]any{"ok": true})
+		case "/api/efast/v1/file/osdownload":
+			if r.Header.Get("Authorization") != "Bearer anon-token" {
+				t.Fatalf("expected anyshare authorization on osdownload, got %q", r.Header.Get("Authorization"))
+			}
+			writeAnyshareJSON(w, map[string]any{
+				"size":        17,
+				"authrequest": []string{"GET", baseURL + "/direct/desktop-app.exe?token=download"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	client, err := anyshare.NewClient(context.Background(), anyshare.Config{
+		BaseURL:     server.URL,
+		SharingLink: server.URL + "/link/" + sharingID,
+		UploadPath:  "gns://upload-dir",
+		Timeout:     time.Second,
+	})
+	if err != nil {
+		server.Close()
+		t.Fatalf("create anyshare test client: %v", err)
+	}
+	return server, client
+}
+
+func writeAnyshareJSON(w http.ResponseWriter, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
 func findStagingClient(t *testing.T, server *httptest.Server, slug, version string) string {
 	t.Helper()
 
@@ -366,6 +506,11 @@ func getJSON[T any](t *testing.T, server *httptest.Server, path, bearer string) 
 
 func uploadArtifact(t *testing.T, server *httptest.Server, releaseID uuid.UUID, bearer string) domain.Artifact {
 	t.Helper()
+	return uploadArtifactWithSource(t, server, releaseID, bearer, "")
+}
+
+func uploadArtifactWithSource(t *testing.T, server *httptest.Server, releaseID uuid.UUID, bearer, sourceType string) domain.Artifact {
+	t.Helper()
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -376,6 +521,11 @@ func uploadArtifact(t *testing.T, server *httptest.Server, releaseID uuid.UUID, 
 	} {
 		if err := writer.WriteField(key, value); err != nil {
 			t.Fatalf("write field: %v", err)
+		}
+	}
+	if sourceType != "" {
+		if err := writer.WriteField("source_type", sourceType); err != nil {
+			t.Fatalf("write source_type: %v", err)
 		}
 	}
 	part, err := writer.CreateFormFile("file", "desktop-app.exe")

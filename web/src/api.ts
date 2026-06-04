@@ -43,9 +43,17 @@ export type Artifact = {
   storage_key: string;
   file_size: number;
   sha512: string;
+  source_type: "managed" | "anyshare";
+  anyshare_docid?: string;
+  anyshare_rev?: string;
+  anyshare_name?: string;
   created_at: string;
   updated_at: string;
   archived_at?: string;
+};
+
+export type ServerConfig = {
+  anyshare_enabled: boolean;
 };
 
 export type UpdateManifest = {
@@ -137,6 +145,13 @@ type ListResponse<T> = {
   items: T[];
 };
 
+export type UploadProgress = {
+  loaded: number;
+  total: number;
+  percent: number;
+  lengthComputable: boolean;
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -162,6 +177,10 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify({ email, password })
     });
+  }
+
+  async getConfig(): Promise<ServerConfig> {
+    return this.request<ServerConfig>("/api/config");
   }
 
   async listApps(): Promise<DesktopApp[]> {
@@ -244,18 +263,19 @@ export class ApiClient {
     platform: string;
     arch: string;
     file_type: string;
+    source_type?: "managed" | "anyshare";
     file: File;
-  }): Promise<Artifact> {
+  }, onProgress?: (progress: UploadProgress) => void): Promise<Artifact> {
     const body = new FormData();
     body.set("platform", payload.platform);
     body.set("arch", payload.arch);
     body.set("file_type", payload.file_type);
+    if (payload.source_type) {
+      body.set("source_type", payload.source_type);
+    }
     body.set("file", payload.file);
 
-    return this.request<Artifact>(`/api/releases/${releaseId}/artifacts`, {
-      method: "POST",
-      body
-    });
+    return this.requestUpload<Artifact>(`/api/releases/${releaseId}/artifacts`, "POST", body, onProgress);
   }
 
   async updateArtifact(artifactId: string, payload: {
@@ -348,6 +368,45 @@ export class ApiClient {
     }
   }
 
+  private requestUpload<T>(
+    path: string,
+    method: string,
+    body: FormData,
+    onProgress?: (progress: UploadProgress) => void
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(method, path);
+      for (const [key, value] of Object.entries(this.authHeaders())) {
+        xhr.setRequestHeader(key, value);
+      }
+
+      xhr.upload.onprogress = (event) => {
+        const total = event.lengthComputable ? event.total : 0;
+        const percent = total > 0 ? Math.min(100, Math.round((event.loaded / total) * 100)) : 0;
+        onProgress?.({
+          loaded: event.loaded,
+          total,
+          percent,
+          lengthComputable: event.lengthComputable
+        });
+      };
+
+      xhr.onload = () => {
+        const parsed = parseJSON(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(parsed as T);
+          return;
+        }
+        reject(new ApiError(xhr.status, responseError(parsed, xhr.statusText)));
+      };
+
+      xhr.onerror = () => reject(new ApiError(0, "上传失败，请检查网络连接"));
+      xhr.onabort = () => reject(new ApiError(0, "上传已取消"));
+      xhr.send(body);
+    });
+  }
+
   private authHeaders(): Record<string, string> {
     return this.token ? { Authorization: `Bearer ${this.token}` } : {};
   }
@@ -365,4 +424,22 @@ export class ApiClient {
 function withQuery(path: string, params: URLSearchParams): string {
   const query = params.toString();
   return `${path}${query ? `?${query}` : ""}`;
+}
+
+function parseJSON(value: string): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function responseError(value: unknown, fallback: string): string {
+  if (value && typeof value === "object" && "error" in value) {
+    const message = (value as { error?: unknown }).error;
+    if (typeof message === "string") return message;
+  }
+  if (typeof value === "string" && value) return value;
+  return fallback;
 }

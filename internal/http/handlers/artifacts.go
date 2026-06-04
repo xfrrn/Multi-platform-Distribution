@@ -38,12 +38,13 @@ func (h *ArtifactHandler) Upload(c *gin.Context) {
 	defer file.Close()
 
 	artifact, err := h.artifacts.Upload(c.Request.Context(), service.UploadArtifactInput{
-		ReleaseID: releaseID,
-		Platform:  c.PostForm("platform"),
-		Arch:      c.PostForm("arch"),
-		FileType:  c.PostForm("file_type"),
-		FileName:  fileHeader.Filename,
-		Body:      file,
+		ReleaseID:  releaseID,
+		Platform:   c.PostForm("platform"),
+		Arch:       c.PostForm("arch"),
+		FileType:   c.PostForm("file_type"),
+		FileName:   fileHeader.Filename,
+		SourceType: c.PostForm("source_type"),
+		Body:       file,
 	})
 	if err != nil {
 		writeError(c, err)
@@ -152,6 +153,11 @@ func (h *ArtifactHandler) Download(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
+	downloadURL, err := h.artifacts.DownloadURL(c.Request.Context(), artifact)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
 	if h.stats != nil {
 		_ = h.stats.RecordDownload(c.Request.Context(), artifact, service.RequestMeta{
 			IP:        c.ClientIP(),
@@ -159,5 +165,5 @@ func (h *ArtifactHandler) Download(c *gin.Context) {
 			ClientID:  c.Query("client_id"),
 		})
 	}
-	c.Redirect(http.StatusTemporaryRedirect, artifact.FileURL)
+	c.Redirect(http.StatusTemporaryRedirect, downloadURL)
 }

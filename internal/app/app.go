@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"multi-platform-distribution/internal/anyshare"
 	"multi-platform-distribution/internal/auth"
 	"multi-platform-distribution/internal/config"
 	"multi-platform-distribution/internal/database"
@@ -66,11 +67,25 @@ func New(cfg config.Config) (*App, error) {
 		return nil, fmt.Errorf("unsupported STORAGE_DRIVER %q", cfg.StorageDriver)
 	}
 
+	var anyshareClient *anyshare.Client
+	if cfg.AnyshareEnabled {
+		anyshareClient, err = anyshare.NewClient(context.Background(), anyshare.Config{
+			BaseURL:     cfg.AnyshareBaseURL,
+			SharingLink: cfg.AnyshareShareLink,
+			UploadPath:  cfg.AnyshareUploadPath,
+			Timeout:     cfg.AnyshareTimeout,
+		})
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("configure anyshare: %w", err)
+		}
+	}
+
 	repo := postgres.New(db)
 	tokenManager := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTTTL)
 	apps := service.NewAppService(repo)
 	releases := service.NewReleaseService(repo)
-	artifacts := service.NewArtifactService(repo, objectStorage)
+	artifacts := service.NewArtifactServiceWithAnyshare(repo, objectStorage, anyshareClient, cfg.PublicBaseURL)
 	metadata := service.NewMetadataService(repo)
 	stats := service.NewStatsService(repo)
 	authService := service.NewAuthService(repo, tokenManager)

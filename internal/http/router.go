@@ -51,6 +51,9 @@ func NewRouter(cfg config.Config, services Services) *gin.Engine {
 
 	admin := api.Group("")
 	admin.Use(middleware.AdminAuth(cfg.APIKey, services.Tokens))
+	admin.GET("/config", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"anyshare_enabled": cfg.AnyshareEnabled})
+	})
 	admin.POST("/apps", apps.Create)
 	admin.GET("/apps", apps.List)
 	admin.GET("/stats/summary", stats.Summary)

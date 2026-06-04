@@ -7,23 +7,27 @@ import (
 	"path/filepath"
 	"strings"
 
+	"multi-platform-distribution/internal/anyshare"
 	"multi-platform-distribution/internal/domain"
 
 	"github.com/google/uuid"
 )
 
 type ArtifactService struct {
-	repo    Repository
-	storage ObjectStorage
+	repo          Repository
+	storage       ObjectStorage
+	anyshare      *anyshare.Client
+	publicBaseURL string
 }
 
 type UploadArtifactInput struct {
-	ReleaseID uuid.UUID
-	Platform  string
-	Arch      string
-	FileType  string
-	FileName  string
-	Body      io.Reader
+	ReleaseID  uuid.UUID
+	Platform   string
+	Arch       string
+	FileType   string
+	FileName   string
+	SourceType string
+	Body       io.Reader
 }
 
 type UpdateArtifactInput struct {
@@ -40,6 +44,15 @@ type ReplaceArtifactFileInput struct {
 
 func NewArtifactService(repo Repository, storage ObjectStorage) *ArtifactService {
 	return &ArtifactService{repo: repo, storage: storage}
+}
+
+func NewArtifactServiceWithAnyshare(repo Repository, storage ObjectStorage, anyshareClient *anyshare.Client, publicBaseURL string) *ArtifactService {
+	return &ArtifactService{
+		repo:          repo,
+		storage:       storage,
+		anyshare:      anyshareClient,
+		publicBaseURL: strings.TrimRight(publicBaseURL, "/"),
+	}
 }
 
 func (s *ArtifactService) Upload(ctx context.Context, input UploadArtifactInput) (domain.Artifact, error) {
@@ -62,6 +75,14 @@ func (s *ArtifactService) Upload(ctx context.Context, input UploadArtifactInput)
 	if name == "" {
 		name = "artifact." + fileType
 	}
+	sourceType, err := normalizeSourceType(input.SourceType)
+	if err != nil {
+		return domain.Artifact{}, err
+	}
+	if sourceType == "anyshare" {
+		return s.uploadAnyshare(context.WithoutCancel(ctx), release.ID, platform, arch, fileType, name, input.Body)
+	}
+
 	key := strings.Join([]string{
 		release.AppID.String(),
 		release.ID.String(),
@@ -86,6 +107,7 @@ func (s *ArtifactService) Upload(ctx context.Context, input UploadArtifactInput)
 		StorageKey: obj.Key,
 		FileSize:   obj.Size,
 		SHA512:     obj.SHA512,
+		SourceType: "managed",
 	}
 	if err := s.repo.CreateArtifact(ctx, &artifact); err != nil {
 		return domain.Artifact{}, err
@@ -146,6 +168,32 @@ func (s *ArtifactService) ReplaceFile(ctx context.Context, id uuid.UUID, input R
 	if fileName == "" {
 		fileName = artifact.FileName
 	}
+	if normalizeArtifactSource(artifact.SourceType) == "anyshare" {
+		if s.anyshare == nil {
+			return domain.Artifact{}, errors.New("anyshare storage is not enabled")
+		}
+		uploadCtx := context.WithoutCancel(ctx)
+		obj, err := s.anyshare.Upload(uploadCtx, fileName, input.Body)
+		if err != nil {
+			return domain.Artifact{}, err
+		}
+		artifact.FileName = fileName
+		artifact.StorageKey = obj.DocID
+		artifact.FileSize = obj.Size
+		artifact.SHA512 = obj.SHA512
+		artifact.SourceType = "anyshare"
+		artifact.AnyshareDocID = obj.DocID
+		artifact.AnyshareRev = obj.Rev
+		artifact.AnyshareName = obj.Name
+		if artifact.FileURL == "" {
+			artifact.FileURL = s.artifactDownloadURL(artifact.ID)
+		}
+		if err := s.repo.UpdateArtifactFile(uploadCtx, &artifact); err != nil {
+			return domain.Artifact{}, err
+		}
+		return artifact, nil
+	}
+
 	key := strings.Join([]string{
 		release.AppID.String(),
 		release.ID.String(),
@@ -162,6 +210,7 @@ func (s *ArtifactService) ReplaceFile(ctx context.Context, id uuid.UUID, input R
 	artifact.StorageKey = obj.Key
 	artifact.FileSize = obj.Size
 	artifact.SHA512 = obj.SHA512
+	artifact.SourceType = "managed"
 	if err := s.repo.UpdateArtifactFile(ctx, &artifact); err != nil {
 		return domain.Artifact{}, err
 	}
@@ -172,8 +221,82 @@ func (s *ArtifactService) Archive(ctx context.Context, id uuid.UUID) error {
 	return s.repo.ArchiveArtifact(ctx, id)
 }
 
+func (s *ArtifactService) DownloadURL(ctx context.Context, artifact domain.Artifact) (string, error) {
+	if normalizeArtifactSource(artifact.SourceType) != "anyshare" {
+		return artifact.FileURL, nil
+	}
+	if s.anyshare == nil {
+		return "", errors.New("anyshare storage is not enabled")
+	}
+	docID := artifact.AnyshareDocID
+	if docID == "" {
+		docID = artifact.StorageKey
+	}
+	result, err := s.anyshare.ResolveDownload(ctx, docID, artifact.AnyshareRev, artifact.AnyshareName)
+	if err != nil {
+		return "", err
+	}
+	return result.URL, nil
+}
+
+func (s *ArtifactService) uploadAnyshare(ctx context.Context, releaseID uuid.UUID, platform, arch, fileType, name string, body io.Reader) (domain.Artifact, error) {
+	if s.anyshare == nil {
+		return domain.Artifact{}, errors.New("anyshare storage is not enabled")
+	}
+	obj, err := s.anyshare.Upload(ctx, name, body)
+	if err != nil {
+		return domain.Artifact{}, err
+	}
+	artifactID := uuid.New()
+	artifact := domain.Artifact{
+		ID:            artifactID,
+		ReleaseID:     releaseID,
+		Platform:      platform,
+		Arch:          arch,
+		FileType:      fileType,
+		FileName:      name,
+		FileURL:       s.artifactDownloadURL(artifactID),
+		StorageKey:    obj.DocID,
+		FileSize:      obj.Size,
+		SHA512:        obj.SHA512,
+		SourceType:    "anyshare",
+		AnyshareDocID: obj.DocID,
+		AnyshareRev:   obj.Rev,
+		AnyshareName:  obj.Name,
+	}
+	if err := s.repo.CreateArtifact(ctx, &artifact); err != nil {
+		return domain.Artifact{}, err
+	}
+	return artifact, nil
+}
+
+func (s *ArtifactService) artifactDownloadURL(id uuid.UUID) string {
+	if s.publicBaseURL == "" {
+		return "/api/artifacts/" + id.String() + "/download"
+	}
+	return s.publicBaseURL + "/api/artifacts/" + id.String() + "/download"
+}
+
 func normalizeToken(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeSourceType(value string) (string, error) {
+	sourceType := normalizeArtifactSource(value)
+	switch sourceType {
+	case "managed", "anyshare":
+		return sourceType, nil
+	default:
+		return "", errors.New("source_type must be managed or anyshare")
+	}
+}
+
+func normalizeArtifactSource(value string) string {
+	sourceType := strings.ToLower(strings.TrimSpace(value))
+	if sourceType == "" {
+		return "managed"
+	}
+	return sourceType
 }
 
 func safeFilename(name string) string {

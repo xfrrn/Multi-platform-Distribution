@@ -223,11 +223,15 @@ func (r *Repository) ListPublishedReleasesByAppChannel(ctx context.Context, appI
 }
 
 func (r *Repository) CreateArtifact(ctx context.Context, artifact *domain.Artifact) error {
+	artifact.SourceType = normalizeArtifactSource(artifact.SourceType)
 	row := r.pool.QueryRow(ctx, `
-		insert into artifacts (id, release_id, platform, arch, file_type, file_name, file_url, storage_key, file_size, sha512)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		insert into artifacts (
+			id, release_id, platform, arch, file_type, file_name, file_url, storage_key,
+			file_size, sha512, source_type, anyshare_docid, anyshare_rev, anyshare_name
+		)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		returning created_at, updated_at, archived_at
-	`, artifact.ID, artifact.ReleaseID, artifact.Platform, artifact.Arch, artifact.FileType, artifact.FileName, artifact.FileURL, artifact.StorageKey, artifact.FileSize, artifact.SHA512)
+	`, artifact.ID, artifact.ReleaseID, artifact.Platform, artifact.Arch, artifact.FileType, artifact.FileName, artifact.FileURL, artifact.StorageKey, artifact.FileSize, artifact.SHA512, artifact.SourceType, artifact.AnyshareDocID, artifact.AnyshareRev, artifact.AnyshareName)
 	return row.Scan(&artifact.CreatedAt, &artifact.UpdatedAt, &artifact.ArchivedAt)
 }
 
@@ -240,7 +244,8 @@ func (r *Repository) UpdateArtifact(ctx context.Context, artifact *domain.Artifa
 			file_name = $5,
 			updated_at = now()
 		where id = $1 and archived_at is null
-		returning id, release_id, platform, arch, file_type, file_name, file_url, storage_key, file_size, sha512, created_at, updated_at, archived_at
+		returning id, release_id, platform, arch, file_type, file_name, file_url, storage_key, file_size, sha512,
+			source_type, anyshare_docid, anyshare_rev, anyshare_name, created_at, updated_at, archived_at
 	`, artifact.ID, artifact.Platform, artifact.Arch, artifact.FileType, artifact.FileName)
 	updated, err := scanArtifact(row)
 	if err != nil {
@@ -258,10 +263,15 @@ func (r *Repository) UpdateArtifactFile(ctx context.Context, artifact *domain.Ar
 			storage_key = $4,
 			file_size = $5,
 			sha512 = $6,
+			source_type = $7,
+			anyshare_docid = $8,
+			anyshare_rev = $9,
+			anyshare_name = $10,
 			updated_at = now()
 		where id = $1 and archived_at is null
-		returning id, release_id, platform, arch, file_type, file_name, file_url, storage_key, file_size, sha512, created_at, updated_at, archived_at
-	`, artifact.ID, artifact.FileName, artifact.FileURL, artifact.StorageKey, artifact.FileSize, artifact.SHA512)
+		returning id, release_id, platform, arch, file_type, file_name, file_url, storage_key, file_size, sha512,
+			source_type, anyshare_docid, anyshare_rev, anyshare_name, created_at, updated_at, archived_at
+	`, artifact.ID, artifact.FileName, artifact.FileURL, artifact.StorageKey, artifact.FileSize, artifact.SHA512, normalizeArtifactSource(artifact.SourceType), artifact.AnyshareDocID, artifact.AnyshareRev, artifact.AnyshareName)
 	updated, err := scanArtifact(row)
 	if err != nil {
 		return err
@@ -288,7 +298,8 @@ func (r *Repository) ArchiveArtifact(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repository) GetArtifactByID(ctx context.Context, id uuid.UUID) (domain.Artifact, error) {
 	artifact, err := scanArtifact(r.pool.QueryRow(ctx, `
-		select id, release_id, platform, arch, file_type, file_name, file_url, storage_key, file_size, sha512, created_at, updated_at, archived_at
+		select id, release_id, platform, arch, file_type, file_name, file_url, storage_key, file_size, sha512,
+			source_type, anyshare_docid, anyshare_rev, anyshare_name, created_at, updated_at, archived_at
 		from artifacts
 		where id = $1 and archived_at is null
 	`, id))
@@ -297,7 +308,8 @@ func (r *Repository) GetArtifactByID(ctx context.Context, id uuid.UUID) (domain.
 
 func (r *Repository) ListArtifactsByRelease(ctx context.Context, releaseID uuid.UUID) ([]domain.Artifact, error) {
 	rows, err := r.pool.Query(ctx, `
-		select id, release_id, platform, arch, file_type, file_name, file_url, storage_key, file_size, sha512, created_at, updated_at, archived_at
+		select id, release_id, platform, arch, file_type, file_name, file_url, storage_key, file_size, sha512,
+			source_type, anyshare_docid, anyshare_rev, anyshare_name, created_at, updated_at, archived_at
 		from artifacts
 		where release_id = $1 and archived_at is null
 		order by platform, arch, file_type
@@ -326,7 +338,10 @@ func scanRelease(row pgx.Row) (domain.Release, error) {
 
 func scanArtifact(row pgx.Row) (domain.Artifact, error) {
 	var artifact domain.Artifact
-	err := row.Scan(&artifact.ID, &artifact.ReleaseID, &artifact.Platform, &artifact.Arch, &artifact.FileType, &artifact.FileName, &artifact.FileURL, &artifact.StorageKey, &artifact.FileSize, &artifact.SHA512, &artifact.CreatedAt, &artifact.UpdatedAt, &artifact.ArchivedAt)
+	err := row.Scan(&artifact.ID, &artifact.ReleaseID, &artifact.Platform, &artifact.Arch, &artifact.FileType, &artifact.FileName, &artifact.FileURL, &artifact.StorageKey, &artifact.FileSize, &artifact.SHA512, &artifact.SourceType, &artifact.AnyshareDocID, &artifact.AnyshareRev, &artifact.AnyshareName, &artifact.CreatedAt, &artifact.UpdatedAt, &artifact.ArchivedAt)
+	if artifact.SourceType == "" {
+		artifact.SourceType = "managed"
+	}
 	return artifact, normalizeNotFound(err)
 }
 
@@ -618,4 +633,12 @@ func normalizeNotFound(err error) error {
 		return domain.ErrNotFound
 	}
 	return err
+}
+
+func normalizeArtifactSource(sourceType string) string {
+	sourceType = strings.ToLower(strings.TrimSpace(sourceType))
+	if sourceType == "" {
+		return "managed"
+	}
+	return sourceType
 }

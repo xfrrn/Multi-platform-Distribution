@@ -26,6 +26,11 @@ services:
       AUTO_MIGRATE: "true"
       STORAGE_DRIVER: local
       LOCAL_STORAGE_PATH: /app/data/uploads
+      ANYSHARE_ENABLED: "true"
+      ANYSHARE_BASE_URL: https://yunpan.ustb.edu.cn
+      ANYSHARE_SHARING_LINK: https://yunpan.ustb.edu.cn/link/AA60DDB0BEB3F141A98A7DF75B5F5D7992
+      ANYSHARE_UPLOAD_PATH: gns://F766A255ECA64F50B6DD2F7BC692D48F/E36728FC86E441B9A1E4A13BCC12B572
+      ANYSHARE_TIMEOUT: 10m
     ports:
       - "8080:8080"
     volumes:

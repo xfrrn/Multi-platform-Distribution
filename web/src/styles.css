@@ -283,6 +283,18 @@ p {
   font-size: 12px;
 }
 
+.sourcePill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #41536b;
+  background: #eef2f7;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .cardArrow {
   position: absolute;
   right: 16px;
@@ -521,6 +533,83 @@ textarea:focus {
   margin-top: 3px;
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.uploadTaskList {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.uploadTask {
+  display: grid;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.uploadTask.done {
+  border-color: #b8dfca;
+  background: #f1fbf5;
+}
+
+.uploadTask.error {
+  border-color: #f0bbc4;
+  background: #fff5f6;
+}
+
+.uploadTaskHeader,
+.uploadTaskMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.uploadTaskHeader strong {
+  min-width: 0;
+  color: #27364a;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.uploadTaskHeader span {
+  flex: 0 0 auto;
+  color: #52637a;
+  font-size: 12px;
+}
+
+.uploadTaskMeta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  color: #667287;
+  font-size: 12px;
+}
+
+.uploadProgressTrack {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e1e7ef;
+}
+
+.uploadProgressTrack span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f6feb, #1f8f74);
+  transition: width 0.2s ease;
+}
+
+.uploadTask.error .uploadProgressTrack span {
+  background: #c4334b;
+}
+
+.uploadTaskError {
+  color: #8a1f2d;
+  font-size: 12px;
 }
 
 .metricGrid {

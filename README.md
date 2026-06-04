@@ -101,3 +101,5 @@ Invoke-RestMethod `
 Local storage is the default and serves files from `/downloads`.
 
 Set `STORAGE_DRIVER=s3` or `STORAGE_DRIVER=minio` to use an S3-compatible backend. Required variables are `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY`. Use `S3_PUBLIC_BASE_URL` when files are served through a CDN, reverse proxy, or public bucket URL.
+
+Anyshare can be enabled as an experimental artifact source without replacing `STORAGE_DRIVER`. Set `ANYSHARE_ENABLED=true`, `ANYSHARE_BASE_URL`, `ANYSHARE_SHARING_LINK`, and `ANYSHARE_UPLOAD_PATH`. Use a larger `ANYSHARE_TIMEOUT`, such as `10m`, for installer uploads. Anyshare artifacts are uploaded to the configured remote folder, but manifests expose the stable server download endpoint so downloads can resolve a fresh Anyshare direct URL at request time.

@@ -31,28 +31,117 @@ import {
   DesktopApp,
   DownloadEvent,
   Release,
+  ServerConfig,
   StatsBreakdown,
   StatsPoint,
   StatsSummary,
   UpdateManifest,
-  UpdateRequestEvent
+  UpdateRequestEvent,
+  UploadProgress
 } from "./api";
 
 type View = "home" | "detail" | "stats";
 type DetailTab = "overview" | "releases" | "artifacts" | "metadata" | "stats" | "settings";
 type MetaFormat = "json" | "yml" | "xml";
+type ArtifactSource = "managed" | "anyshare";
+type UploadTaskStatus = "uploading" | "processing" | "done" | "error";
+type ArtifactUploadPayload = { platform: string; arch: string; file_type: string; source_type: ArtifactSource; file: File };
+type ArtifactUploadTask = {
+  id: string;
+  releaseId: string;
+  fileName: string;
+  fileSize: number;
+  target: string;
+  loaded: number;
+  total: number;
+  progress: number;
+  status: UploadTaskStatus;
+  error?: string;
+};
 
 const tokenKey = "mpd.adminToken";
 const channels = ["stable", "beta", "internal"];
 const platforms = ["windows", "macos", "linux"];
 const arches = ["x64", "arm64", "universal"];
 const fileTypes = ["exe", "dmg", "msi", "zip", "AppImage"];
+const uploadTaskListeners = new Set<() => void>();
+let artifactUploadTasks: ArtifactUploadTask[] = [];
 
 type AppStats = {
   latestVersion: string;
   artifactCount: number;
   platforms: string[];
 };
+
+function useArtifactUploadTasks() {
+  const [tasks, setTasks] = useState<ArtifactUploadTask[]>(artifactUploadTasks);
+
+  useEffect(() => {
+    const listener = () => setTasks([...artifactUploadTasks]);
+    uploadTaskListeners.add(listener);
+    return () => {
+      uploadTaskListeners.delete(listener);
+    };
+  }, []);
+
+  return tasks;
+}
+
+function notifyArtifactUploadTasks() {
+  for (const listener of uploadTaskListeners) {
+    listener();
+  }
+}
+
+function addArtifactUploadTask(task: ArtifactUploadTask) {
+  artifactUploadTasks = [task, ...artifactUploadTasks].slice(0, 8);
+  notifyArtifactUploadTasks();
+}
+
+function updateArtifactUploadTask(id: string, patch: Partial<ArtifactUploadTask>) {
+  artifactUploadTasks = artifactUploadTasks.map((task) => task.id === id ? { ...task, ...patch } : task);
+  notifyArtifactUploadTasks();
+}
+
+function startArtifactUpload(
+  api: ApiClient,
+  releaseId: string,
+  payload: ArtifactUploadPayload,
+  onFinished: () => void | Promise<void>,
+  onFailed: (err: unknown) => void
+) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  addArtifactUploadTask({
+    id,
+    releaseId,
+    fileName: payload.file.name,
+    fileSize: payload.file.size,
+    target: `${payload.platform}/${payload.arch}/${payload.file_type}`,
+    loaded: 0,
+    total: payload.file.size,
+    progress: 0,
+    status: "uploading"
+  });
+
+  const handleProgress = (progress: UploadProgress) => {
+    updateArtifactUploadTask(id, {
+      loaded: progress.loaded,
+      total: progress.total || payload.file.size,
+      progress: progress.percent,
+      status: progress.lengthComputable && progress.percent >= 100 ? "processing" : "uploading"
+    });
+  };
+
+  void api.uploadArtifact(releaseId, payload, handleProgress)
+    .then(() => {
+      updateArtifactUploadTask(id, { loaded: payload.file.size, progress: 100, status: "done" });
+      void Promise.resolve(onFinished()).catch(onFailed);
+    })
+    .catch((err) => {
+      updateArtifactUploadTask(id, { status: "error", error: readError(err) });
+      onFailed(err);
+    });
+}
 
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem(tokenKey));
@@ -364,6 +453,7 @@ function AppDetail({
   const [releases, setReleases] = useState<Release[]>([]);
   const [artifacts, setArtifacts] = useState<Record<string, Artifact[]>>({});
   const [selectedRelease, setSelectedRelease] = useState("");
+  const [serverConfig, setServerConfig] = useState<ServerConfig>({ anyshare_enabled: false });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -376,7 +466,11 @@ function AppDetail({
     setLoading(true);
     setError("");
     try {
-      const releaseItems = await api.listReleases(initialApp.id);
+      const [config, releaseItems] = await Promise.all([
+        api.getConfig().catch(() => ({ anyshare_enabled: false })),
+        api.listReleases(initialApp.id)
+      ]);
+      setServerConfig(config);
       setReleases(releaseItems);
       setSelectedRelease((current) => current || releaseItems[0]?.id || "");
       const nextArtifacts: Record<string, Artifact[]> = {};
@@ -434,6 +528,7 @@ function AppDetail({
           api={api}
           releases={releases}
           artifacts={artifacts}
+          anyshareEnabled={serverConfig.anyshare_enabled}
           selectedRelease={selectedRelease}
           onRelease={setSelectedRelease}
           onError={setError}
@@ -650,6 +745,7 @@ function ArtifactsTab({
   api,
   releases,
   artifacts,
+  anyshareEnabled,
   selectedRelease,
   onRelease,
   onError,
@@ -658,6 +754,7 @@ function ArtifactsTab({
   api: ApiClient;
   releases: Release[];
   artifacts: Record<string, Artifact[]>;
+  anyshareEnabled: boolean;
   selectedRelease: string;
   onRelease: (id: string) => void;
   onError: (error: string) => void;
@@ -665,6 +762,9 @@ function ArtifactsTab({
 }) {
   const [platformFilter, setPlatformFilter] = useState("");
   const [archFilter, setArchFilter] = useState("");
+  const uploadTasks = useArtifactUploadTasks();
+  const releaseIds = new Set(releases.map((release) => release.id));
+  const visibleUploadTasks = uploadTasks.filter((task) => releaseIds.has(task.releaseId));
   const visibleArtifacts = (selectedRelease ? artifacts[selectedRelease] ?? [] : Object.values(artifacts).flat())
     .filter((artifact) => !platformFilter || artifact.platform === platformFilter)
     .filter((artifact) => !archFilter || artifact.arch === archFilter);
@@ -676,21 +776,24 @@ function ArtifactsTab({
         <UploadForm
           releases={releases}
           selectedRelease={selectedRelease}
+          anyshareEnabled={anyshareEnabled}
           onRelease={onRelease}
-          onUpload={async (payload) => {
+          onUpload={(payload) => {
             if (!selectedRelease) {
               onError("请先创建或选择一个版本");
               return;
             }
             onError("");
-            try {
-              await api.uploadArtifact(selectedRelease, payload);
-              await onChanged();
-            } catch (err) {
-              onError(readError(err));
-            }
+            startArtifactUpload(
+              api,
+              selectedRelease,
+              payload,
+              onChanged,
+              (err) => onError(readError(err))
+            );
           }}
         />
+        <UploadTaskList tasks={visibleUploadTasks} releases={releases} />
       </section>
       <section className="panel widePanel">
         <PanelTitle icon={<FileArchive size={19} />} title="安装包列表" />
@@ -775,6 +878,7 @@ function ArtifactTable({
             <th>版本</th>
             <th>目标</th>
             <th>大小</th>
+            <th>来源</th>
             <th>SHA512</th>
             {!readonly && <th>操作</th>}
           </tr>
@@ -828,6 +932,7 @@ function ArtifactRow({
         <td>{release?.version ?? "-"}</td>
         <td>{artifact.platform}/{artifact.arch}/{artifact.file_type}</td>
         <td>{formatBytes(artifact.file_size)}</td>
+        <td><span className="sourcePill">{artifact.source_type === "anyshare" ? "Anyshare" : "默认"}</span></td>
         <td className="mono">{artifact.sha512.slice(0, 28)}...</td>
         {!readonly && (
           <td>
@@ -874,6 +979,7 @@ function ArtifactRow({
         </div>
       </td>
       <td>{formatBytes(artifact.file_size)}</td>
+      <td><span className="sourcePill">{artifact.source_type === "anyshare" ? "Anyshare" : "默认"}</span></td>
       <td className="mono">{artifact.sha512.slice(0, 28)}...</td>
       <td>
         <div className="tableActions">
@@ -1520,29 +1626,71 @@ function ReleaseForm({
   );
 }
 
+function UploadTaskList({ tasks, releases }: { tasks: ArtifactUploadTask[]; releases: Release[] }) {
+  if (tasks.length === 0) return null;
+  const releaseLabels = new Map(releases.map((release) => [release.id, `${release.version} / ${release.channel}`]));
+
+  return (
+    <div className="uploadTaskList" aria-live="polite">
+      {tasks.map((task) => (
+        <div className={`uploadTask ${task.status}`} key={task.id}>
+          <div className="uploadTaskHeader">
+            <strong>{task.fileName}</strong>
+            <span>{uploadTaskStatus(task)}</span>
+          </div>
+          <div className="uploadTaskMeta">
+            <span>{releaseLabels.get(task.releaseId) ?? task.releaseId}</span>
+            <span>{task.target}</span>
+            <span>{formatBytes(task.fileSize)}</span>
+          </div>
+          <div
+            className="uploadProgressTrack"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={task.progress}
+          >
+            <span style={{ width: `${Math.max(task.progress, task.status === "uploading" ? 2 : 0)}%` }} />
+          </div>
+          {task.error && <div className="uploadTaskError">{task.error}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function UploadForm({
   releases,
   selectedRelease,
+  anyshareEnabled,
   onRelease,
   onUpload
 }: {
   releases: Release[];
   selectedRelease: string;
+  anyshareEnabled: boolean;
   onRelease: (id: string) => void;
-  onUpload: (payload: { platform: string; arch: string; file_type: string; file: File }) => Promise<void>;
+  onUpload: (payload: ArtifactUploadPayload) => void | Promise<void>;
 }) {
   const [platform, setPlatform] = useState("windows");
   const [arch, setArch] = useState("x64");
   const [fileType, setFileType] = useState("exe");
+  const [sourceType, setSourceType] = useState<ArtifactSource>("managed");
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!anyshareEnabled && sourceType === "anyshare") {
+      setSourceType("managed");
+    }
+  }, [anyshareEnabled, sourceType]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!file) return;
     setSubmitting(true);
     try {
-      await onUpload({ platform, arch, file_type: fileType, file });
+      await onUpload({ platform, arch, file_type: fileType, source_type: sourceType, file });
       setFile(null);
     } finally {
       setSubmitting(false);
@@ -1560,6 +1708,13 @@ function UploadForm({
               {release.version} / {release.channel}
             </option>
           ))}
+        </select>
+      </label>
+      <label>
+        存储来源
+        <select value={sourceType} onChange={(event) => setSourceType(event.target.value as ArtifactSource)}>
+          <option value="managed">默认存储</option>
+          {anyshareEnabled && <option value="anyshare">Anyshare 实验</option>}
         </select>
       </label>
       <div className="threeCols">
@@ -1668,6 +1823,14 @@ function readError(err: unknown): string {
     return err.message;
   }
   return "操作失败";
+}
+
+function uploadTaskStatus(task: ArtifactUploadTask): string {
+  if (task.status === "done") return "完成";
+  if (task.status === "error") return "失败";
+  if (task.status === "processing") return "服务器处理中";
+  if (task.progress > 0) return `${task.progress}%`;
+  return task.loaded > 0 ? formatBytes(task.loaded) : "等待上传";
 }
 
 function formatBytes(bytes: number): string {
