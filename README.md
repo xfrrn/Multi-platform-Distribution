@@ -21,11 +21,13 @@ Desktop app update server written in Go. It manages apps, releases, uploaded art
    The server runs database migrations automatically when `AUTO_MIGRATE=true`.
    The web console is available at `http://localhost:5173`.
 
-2. For direct local development, copy `.env.example` values into your shell, start PostgreSQL, then run:
+2. For direct local development, copy `.env.example` to `.env`, start PostgreSQL, then run:
 
    ```powershell
    go run ./cmd/server
    ```
+
+   The server automatically loads `.env` when present; real environment variables still take precedence.
 
 3. Start the web console:
 

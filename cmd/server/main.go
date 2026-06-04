@@ -10,9 +10,12 @@ import (
 
 	"multi-platform-distribution/internal/app"
 	"multi-platform-distribution/internal/config"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load()
 	cfg := config.Load()
 
 	application, err := app.New(cfg)
