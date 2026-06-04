@@ -17,6 +17,7 @@ type Services struct {
 	Releases  *service.ReleaseService
 	Artifacts *service.ArtifactService
 	Metadata  *service.MetadataService
+	Stats     *service.StatsService
 	Auth      *service.AuthService
 	Tokens    *auth.TokenManager
 }
@@ -35,9 +36,10 @@ func NewRouter(cfg config.Config, services Services) *gin.Engine {
 
 	apps := handlers.NewAppHandler(services.Apps)
 	releases := handlers.NewReleaseHandler(services.Releases)
-	artifacts := handlers.NewArtifactHandler(services.Artifacts)
-	latest := handlers.NewLatestHandler(services.Metadata)
+	artifacts := handlers.NewArtifactHandler(services.Artifacts, services.Stats)
+	latest := handlers.NewLatestHandler(services.Metadata, services.Stats)
 	authHandler := handlers.NewAuthHandler(services.Auth)
+	stats := handlers.NewStatsHandler(services.Stats)
 
 	api := router.Group("/api")
 	api.POST("/auth/login", authHandler.Login)
@@ -51,10 +53,25 @@ func NewRouter(cfg config.Config, services Services) *gin.Engine {
 	admin.Use(middleware.AdminAuth(cfg.APIKey, services.Tokens))
 	admin.POST("/apps", apps.Create)
 	admin.GET("/apps", apps.List)
+	admin.GET("/stats/summary", stats.Summary)
+	admin.GET("/stats/update-requests", stats.RecentUpdates)
+	admin.GET("/stats/downloads", stats.RecentDownloads)
 	admin.GET("/apps/:appId", apps.Get)
+	admin.PATCH("/apps/:appId", apps.Update)
+	admin.DELETE("/apps/:appId", apps.Archive)
+	admin.GET("/apps/:appId/stats/summary", stats.AppSummary)
+	admin.GET("/apps/:appId/stats/update-requests", stats.RecentUpdates)
+	admin.GET("/apps/:appId/stats/downloads", stats.RecentDownloads)
 	admin.POST("/apps/:appId/releases", releases.Create)
 	admin.GET("/apps/:appId/releases", releases.ListByApp)
+	admin.GET("/releases/:releaseId/stats", stats.ReleaseStats)
+	admin.PATCH("/releases/:releaseId", releases.Update)
+	admin.DELETE("/releases/:releaseId", releases.Archive)
+	admin.GET("/releases/:releaseId/artifacts", artifacts.ListByRelease)
 	admin.GET("/artifacts/:artifactId", artifacts.Get)
+	admin.PATCH("/artifacts/:artifactId", artifacts.Update)
+	admin.PUT("/artifacts/:artifactId/file", artifacts.ReplaceFile)
+	admin.DELETE("/artifacts/:artifactId", artifacts.Archive)
 	admin.POST("/releases/:releaseId/artifacts", artifacts.Upload)
 
 	return router

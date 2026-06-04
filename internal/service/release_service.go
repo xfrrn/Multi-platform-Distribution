@@ -25,6 +25,15 @@ type CreateReleaseInput struct {
 	PublishedAt    time.Time `json:"published_at"`
 }
 
+type UpdateReleaseInput struct {
+	Version        string    `json:"version"`
+	Channel        string    `json:"channel"`
+	Changelog      string    `json:"changelog"`
+	IsForced       bool      `json:"is_forced"`
+	StagingPercent int       `json:"staging_percent"`
+	PublishedAt    time.Time `json:"published_at"`
+}
+
 func NewReleaseService(repo Repository) *ReleaseService {
 	return &ReleaseService{repo: repo}
 }
@@ -67,4 +76,38 @@ func (s *ReleaseService) ListByApp(ctx context.Context, appID uuid.UUID) ([]doma
 		return nil, err
 	}
 	return s.repo.ListReleasesByApp(ctx, appID)
+}
+
+func (s *ReleaseService) Update(ctx context.Context, id uuid.UUID, input UpdateReleaseInput) (domain.Release, error) {
+	release, err := s.repo.GetReleaseByID(ctx, id)
+	if err != nil {
+		return domain.Release{}, err
+	}
+
+	version := strings.TrimSpace(input.Version)
+	if version == "" {
+		return domain.Release{}, errors.New("version is required")
+	}
+	if input.StagingPercent < 0 || input.StagingPercent > 100 {
+		return domain.Release{}, errors.New("staging_percent must be between 0 and 100")
+	}
+	publishedAt := input.PublishedAt
+	if publishedAt.IsZero() {
+		publishedAt = release.PublishedAt
+	}
+
+	release.Version = version
+	release.Channel = normalizeChannel(input.Channel)
+	release.Changelog = strings.TrimSpace(input.Changelog)
+	release.IsForced = input.IsForced
+	release.StagingPercent = input.StagingPercent
+	release.PublishedAt = publishedAt
+	if err := s.repo.UpdateRelease(ctx, &release); err != nil {
+		return domain.Release{}, err
+	}
+	return release, nil
+}
+
+func (s *ReleaseService) Archive(ctx context.Context, id uuid.UUID) error {
+	return s.repo.ArchiveRelease(ctx, id)
 }

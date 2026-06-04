@@ -48,6 +48,10 @@ paths:
           in: query
           schema:
             type: string
+        - name: client_id
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: Latest update manifest.
@@ -66,7 +70,216 @@ paths:
       responses:
         "200":
           description: Appcast XML feed.
+  /api/apps/{appId}:
+    patch:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: Updated app.
+    delete:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "204":
+          description: App archived.
+  /api/releases/{releaseId}:
+    patch:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: Updated release.
+    delete:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "204":
+          description: Release archived.
+  /api/releases/{releaseId}/stats:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - name: releaseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/dateFrom"
+        - $ref: "#/components/parameters/dateTo"
+        - $ref: "#/components/parameters/channel"
+        - $ref: "#/components/parameters/platform"
+        - $ref: "#/components/parameters/arch"
+        - $ref: "#/components/parameters/clientId"
+      responses:
+        "200":
+          description: Release-scoped stats summary.
+  /api/releases/{releaseId}/artifacts:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: Artifacts for a release.
+  /api/artifacts/{artifactId}:
+    patch:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: Updated artifact metadata.
+    delete:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "204":
+          description: Artifact archived.
+  /api/artifacts/{artifactId}/file:
+    put:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: Artifact file replaced.
+  /api/artifacts/{artifactId}/download:
+    get:
+      parameters:
+        - name: artifactId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/clientId"
+      responses:
+        "307":
+          description: Redirects to the artifact file and records a download event.
+  /api/stats/summary:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/dateFrom"
+        - $ref: "#/components/parameters/dateTo"
+        - $ref: "#/components/parameters/channel"
+        - $ref: "#/components/parameters/platform"
+        - $ref: "#/components/parameters/arch"
+        - $ref: "#/components/parameters/clientId"
+      responses:
+        "200":
+          description: Global stats summary.
+  /api/stats/update-requests:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/dateFrom"
+        - $ref: "#/components/parameters/dateTo"
+        - $ref: "#/components/parameters/channel"
+        - $ref: "#/components/parameters/platform"
+        - $ref: "#/components/parameters/arch"
+        - $ref: "#/components/parameters/clientId"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Recent update request records.
+  /api/stats/downloads:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/dateFrom"
+        - $ref: "#/components/parameters/dateTo"
+        - $ref: "#/components/parameters/channel"
+        - $ref: "#/components/parameters/platform"
+        - $ref: "#/components/parameters/arch"
+        - $ref: "#/components/parameters/clientId"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Recent download records.
+  /api/apps/{appId}/stats/summary:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: App-scoped stats summary.
+  /api/apps/{appId}/stats/update-requests:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: App-scoped update request records.
+  /api/apps/{appId}/stats/downloads:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: App-scoped download records.
 components:
+  parameters:
+    dateFrom:
+      name: date_from
+      in: query
+      schema:
+        type: string
+    dateTo:
+      name: date_to
+      in: query
+      schema:
+        type: string
+    channel:
+      name: channel
+      in: query
+      schema:
+        type: string
+    platform:
+      name: platform
+      in: query
+      schema:
+        type: string
+    arch:
+      name: arch
+      in: query
+      schema:
+        type: string
+    clientId:
+      name: client_id
+      in: query
+      schema:
+        type: string
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+    offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
   securitySchemes:
     bearerAuth:
       type: http

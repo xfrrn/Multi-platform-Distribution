@@ -72,6 +72,7 @@ func New(cfg config.Config) (*App, error) {
 	releases := service.NewReleaseService(repo)
 	artifacts := service.NewArtifactService(repo, objectStorage)
 	metadata := service.NewMetadataService(repo)
+	stats := service.NewStatsService(repo)
 	authService := service.NewAuthService(repo, tokenManager)
 	if err := authService.BootstrapDefaultAdmin(context.Background(), service.BootstrapAdminInput{
 		Email:    cfg.BootstrapEmail,
@@ -87,6 +88,7 @@ func New(cfg config.Config) (*App, error) {
 		Releases:  releases,
 		Artifacts: artifacts,
 		Metadata:  metadata,
+		Stats:     stats,
 		Auth:      authService,
 		Tokens:    tokenManager,
 	})

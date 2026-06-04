@@ -146,6 +146,12 @@ p {
   border-color: #1f6feb;
 }
 
+.iconTextButton.danger {
+  color: #9b1c31;
+  border-color: #f0bbc4;
+  background: #fff5f6;
+}
+
 .iconTextButton.ghost {
   background: transparent;
 }
@@ -256,6 +262,16 @@ p {
   overflow-wrap: anywhere;
 }
 
+.cardMeta {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  padding-bottom: 24px;
+  color: #657184;
+  font-size: 12px;
+}
+
 .channelPill {
   position: absolute;
   left: 18px;
@@ -285,6 +301,36 @@ p {
 
 .detailView {
   padding-top: 24px;
+}
+
+.tabBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.tabButton {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid #cfd6e2;
+  border-radius: 8px;
+  color: #4d5c70;
+  background: #fff;
+}
+
+.tabButton.active {
+  color: #fff;
+  border-color: #27364a;
+  background: #27364a;
+}
+
+.tabRefresh {
+  margin-left: auto;
 }
 
 .detailGrid {
@@ -350,6 +396,10 @@ dd {
   grid-column: 1 / -1;
 }
 
+.widePanel {
+  grid-column: span 1;
+}
+
 .panelTitle {
   display: flex;
   align-items: center;
@@ -407,6 +457,21 @@ textarea:focus {
   gap: 10px;
 }
 
+.filterRow,
+.metaFilterGrid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.filterRow {
+  grid-template-columns: minmax(180px, 1fr) 150px 150px;
+}
+
+.metaFilterGrid {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+
 .checkLine {
   display: flex;
   align-items: center;
@@ -458,6 +523,167 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.statsPage {
+  display: grid;
+  gap: 18px;
+  padding-top: 24px;
+}
+
+.statsToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.statsFilterPanel .panelTitle {
+  margin-bottom: 12px;
+}
+
+.statsFilterGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.statsApply {
+  min-width: 118px;
+}
+
+.statsCards {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.chartPanel {
+  min-height: 260px;
+}
+
+.trendBars {
+  height: 180px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(36px, 1fr));
+  align-items: end;
+  gap: 10px;
+}
+
+.trendItem {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  text-align: center;
+}
+
+.trendTrack {
+  height: 120px;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  border-radius: 8px;
+  background: #eef2f7;
+  overflow: hidden;
+}
+
+.trendTrack span {
+  width: 100%;
+  display: block;
+  border-radius: 8px 8px 0 0;
+  background: #26736e;
+}
+
+.trendItem strong {
+  color: #26354a;
+  font-size: 13px;
+}
+
+.trendItem small {
+  color: #768297;
+  font-size: 11px;
+}
+
+.breakdownPanel {
+  min-height: 230px;
+}
+
+.breakdownList {
+  display: grid;
+  gap: 12px;
+}
+
+.breakdownItem {
+  display: grid;
+  gap: 7px;
+}
+
+.breakdownItem div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #334259;
+  font-size: 13px;
+}
+
+.breakdownTrack {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf1f6;
+}
+
+.breakdownTrack span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #1f6feb;
+}
+
+.statsTables {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
+  gap: 18px;
+}
+
+.statsTable {
+  min-width: 900px;
+}
+
+.metric {
+  min-height: 84px;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  background: #f9fbfd;
+}
+
+.metric span {
+  color: #758195;
+  font-size: 12px;
+}
+
+.metric strong {
+  color: #243247;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
 .releaseList {
   display: grid;
   gap: 9px;
@@ -484,6 +710,27 @@ textarea:focus {
   font-size: 12px;
 }
 
+.releaseEditorList {
+  display: grid;
+  gap: 12px;
+}
+
+.releaseEditor {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
 .metaControls {
   display: flex;
   align-items: center;
@@ -508,6 +755,32 @@ textarea:focus {
   place-items: center;
 }
 
+.uploadMini {
+  min-height: 38px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.uploadMini input {
+  display: none;
+}
+
+.dangerIcon {
+  color: #9b1c31;
+}
+
+.urlLine {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  color: #384b64;
+  background: #f8fafc;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
 .metadataBox {
   min-height: 230px;
   max-height: 430px;
@@ -521,6 +794,52 @@ textarea:focus {
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
+}
+
+.tableWrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.dataTable th,
+.dataTable td {
+  padding: 10px;
+  border-bottom: 1px solid #e1e6ef;
+  text-align: left;
+  vertical-align: top;
+}
+
+.dataTable th {
+  color: #687488;
+  font-size: 12px;
+  font-weight: 650;
+  background: #f8fafc;
+}
+
+.dataTable td {
+  color: #26354a;
+  font-size: 13px;
+}
+
+.mono {
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.tableActions {
+  display: flex;
+  gap: 7px;
+}
+
+.artifactEditGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(95px, 1fr));
+  gap: 6px;
 }
 
 .emptyState {
@@ -621,8 +940,22 @@ textarea:focus {
     grid-column: auto;
   }
 
+  .tabRefresh {
+    margin-left: 0;
+  }
+
   .twoCols,
-  .threeCols {
+  .threeCols,
+  .filterRow,
+  .metaFilterGrid,
+  .statsFilterGrid,
+  .statsTables {
+    grid-template-columns: 1fr;
+  }
+
+  .metricGrid,
+  .statsCards,
+  .statsGrid {
     grid-template-columns: 1fr;
   }
 }

@@ -53,3 +53,35 @@ func (h *AppHandler) Get(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, app)
 }
+
+func (h *AppHandler) Update(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("appId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	var input service.UpdateAppInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, err)
+		return
+	}
+	app, err := h.apps.Update(c.Request.Context(), id, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, app)
+}
+
+func (h *AppHandler) Archive(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("appId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	if err := h.apps.Archive(c.Request.Context(), id); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

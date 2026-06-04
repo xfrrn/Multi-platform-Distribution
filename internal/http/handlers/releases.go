@@ -50,3 +50,35 @@ func (h *ReleaseHandler) ListByApp(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"items": releases})
 }
+
+func (h *ReleaseHandler) Update(c *gin.Context) {
+	releaseID, err := uuid.Parse(c.Param("releaseId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	var input service.UpdateReleaseInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, err)
+		return
+	}
+	release, err := h.releases.Update(c.Request.Context(), releaseID, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, release)
+}
+
+func (h *ReleaseHandler) Archive(c *gin.Context) {
+	releaseID, err := uuid.Parse(c.Param("releaseId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	if err := h.releases.Archive(c.Request.Context(), releaseID); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

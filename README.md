@@ -44,15 +44,36 @@ Desktop app update server written in Go. It manages apps, releases, uploaded art
 - `POST /api/apps`
 - `GET /api/apps`
 - `GET /api/apps/:appId`
+- `PATCH /api/apps/:appId`
+- `DELETE /api/apps/:appId`
 - `POST /api/apps/:appId/releases`
 - `GET /api/apps/:appId/releases`
+- `PATCH /api/releases/:releaseId`
+- `DELETE /api/releases/:releaseId`
+- `GET /api/releases/:releaseId/artifacts`
 - `POST /api/releases/:releaseId/artifacts`
 - `GET /api/artifacts/:artifactId`
+- `PATCH /api/artifacts/:artifactId`
+- `PUT /api/artifacts/:artifactId/file`
+- `DELETE /api/artifacts/:artifactId`
 - `GET /api/artifacts/:artifactId/download`
-- `GET /api/latest/:appSlug?channel=stable&platform=windows&arch=x64`
+- `GET /api/latest/:appSlug?channel=stable&platform=windows&arch=x64&client_id=device-1`
 - `GET /api/latest/:appSlug/update.json`
 - `GET /api/latest/:appSlug/latest.yml`
 - `GET /api/latest/:appSlug/appcast.xml`
+- `GET /api/stats/summary`
+- `GET /api/stats/update-requests`
+- `GET /api/stats/downloads`
+- `GET /api/apps/:appId/stats/summary`
+- `GET /api/apps/:appId/stats/update-requests`
+- `GET /api/apps/:appId/stats/downloads`
+- `GET /api/releases/:releaseId/stats`
+
+Delete endpoints use soft archive. Archived apps, releases, and artifacts stay in storage but are hidden from management lists and latest metadata.
+
+Staged releases use `client_id` for stable hash rollout. Requests without `client_id` skip staged releases below 100%.
+
+Stats endpoints support `date_from`, `date_to`, `channel`, `platform`, `arch`, `client_id`, `limit`, and `offset` where applicable.
 
 ## Admin authentication
 

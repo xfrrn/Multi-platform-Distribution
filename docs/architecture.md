@@ -20,4 +20,8 @@ The first development phase focuses on the release pipeline:
 3. Upload artifacts.
 4. Generate a client-facing latest manifest.
 
+Current management behavior uses soft archive for apps, releases, and artifacts. Archived data is retained in PostgreSQL and object storage but excluded from default management lists and public latest metadata.
+
+Staged releases are selected by stable hashing of `app_slug`, `channel`, `version`, and `client_id`. Clients that do not pass `client_id` do not receive releases below 100% rollout.
+
 Detailed statistics, generated blockmap support, and richer admin roles are planned as later modules.

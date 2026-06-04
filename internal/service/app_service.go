@@ -25,6 +25,13 @@ type CreateAppInput struct {
 	DefaultChannel string `json:"default_channel"`
 }
 
+type UpdateAppInput struct {
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	IconURL        string `json:"icon_url"`
+	DefaultChannel string `json:"default_channel"`
+}
+
 func NewAppService(repo Repository) *AppService {
 	return &AppService{repo: repo}
 }
@@ -61,6 +68,31 @@ func (s *AppService) List(ctx context.Context) ([]domain.App, error) {
 
 func (s *AppService) Get(ctx context.Context, id uuid.UUID) (domain.App, error) {
 	return s.repo.GetAppByID(ctx, id)
+}
+
+func (s *AppService) Update(ctx context.Context, id uuid.UUID, input UpdateAppInput) (domain.App, error) {
+	app, err := s.repo.GetAppByID(ctx, id)
+	if err != nil {
+		return domain.App{}, err
+	}
+
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return domain.App{}, errors.New("name is required")
+	}
+
+	app.Name = name
+	app.Description = strings.TrimSpace(input.Description)
+	app.IconURL = strings.TrimSpace(input.IconURL)
+	app.DefaultChannel = normalizeChannel(input.DefaultChannel)
+	if err := s.repo.UpdateApp(ctx, &app); err != nil {
+		return domain.App{}, err
+	}
+	return app, nil
+}
+
+func (s *AppService) Archive(ctx context.Context, id uuid.UUID) error {
+	return s.repo.ArchiveApp(ctx, id)
 }
 
 func normalizeChannel(channel string) string {
