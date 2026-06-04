@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
@@ -22,22 +23,25 @@ import (
 )
 
 type Config struct {
-	BaseURL     string
-	SharingLink string
-	UploadPath  string
-	Cookie      string
-	Timeout     time.Duration
+	BaseURL         string
+	SharingLink     string
+	UploadPath      string
+	Cookie          string
+	Timeout         time.Duration
+	RefreshInterval time.Duration
 }
 
 type Client struct {
-	baseURL       string
-	sharingLink   string
-	sharingID     string
-	uploadPath    string
-	loginCookie   string
-	authorization string
-	httpClient    *http.Client
-	mu            sync.Mutex
+	baseURL         string
+	sharingLink     string
+	sharingID       string
+	uploadPath      string
+	loginCookie     string
+	refreshInterval time.Duration
+	authorization   string
+	httpClient      *http.Client
+	stopRefresh     context.CancelFunc
+	mu              sync.Mutex
 }
 
 type UploadResult struct {
@@ -82,16 +86,21 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
 	}
+	refreshInterval := cfg.RefreshInterval
+	if refreshInterval <= 0 {
+		refreshInterval = 30 * time.Minute
+	}
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, fmt.Errorf("create anyshare cookie jar: %w", err)
 	}
 	client := &Client{
-		baseURL:     baseURL,
-		sharingLink: sharingLink,
-		sharingID:   sharingID,
-		uploadPath:  strings.TrimSpace(cfg.UploadPath),
-		loginCookie: strings.TrimSpace(cfg.Cookie),
+		baseURL:         baseURL,
+		sharingLink:     sharingLink,
+		sharingID:       sharingID,
+		uploadPath:      strings.TrimSpace(cfg.UploadPath),
+		loginCookie:     strings.TrimSpace(cfg.Cookie),
+		refreshInterval: refreshInterval,
 		httpClient: &http.Client{
 			Jar:     jar,
 			Timeout: timeout,
@@ -104,8 +113,21 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		if err := client.setCookie(client.loginCookie); err != nil {
 			return nil, err
 		}
+		client.mu.Lock()
+		err := client.refreshAuthorizationLocked(ctx, false)
+		client.mu.Unlock()
+		if err != nil {
+			return nil, err
+		}
+		client.startAuthorizationRefresher()
 	}
 	return client, nil
+}
+
+func (c *Client) Close() {
+	if c.stopRefresh != nil {
+		c.stopRefresh()
+	}
 }
 
 func (c *Client) Upload(ctx context.Context, fileName string, body io.Reader) (UploadResult, error) {
@@ -264,12 +286,37 @@ func (c *Client) ensureAuthorization(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.loginCookie != "" {
+		if c.authorization != "" {
+			return nil
+		}
 		return c.refreshAuthorizationLocked(ctx, false)
 	}
 	if c.authorization != "" {
 		return nil
 	}
 	return c.visitSharingLink(ctx)
+}
+
+func (c *Client) startAuthorizationRefresher() {
+	ctx, cancel := context.WithCancel(context.Background())
+	c.stopRefresh = cancel
+	go func() {
+		ticker := time.NewTicker(c.refreshInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				c.mu.Lock()
+				err := c.refreshAuthorizationLocked(ctx, false)
+				c.mu.Unlock()
+				if err != nil {
+					log.Printf("refresh anyshare authorization: %v", err)
+				}
+			}
+		}
+	}()
 }
 
 func (c *Client) setCookie(rawCookie string) error {

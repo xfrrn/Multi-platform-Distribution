@@ -3,9 +3,11 @@ package anyshare
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -230,6 +232,46 @@ func TestClientRetriesPostJSONAfterUnauthorizedRefresh(t *testing.T) {
 	}
 	if beginCalls != 2 {
 		t.Fatalf("expected download request to be retried once, got %d calls", beginCalls)
+	}
+}
+
+func TestClientRefreshesAuthorizationOnInterval(t *testing.T) {
+	const sharingID = "AA60DDB0BEB3F141A98A7DF75B5F5D7992"
+	var refreshCalls int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/anyshare/oauth2/login/refreshToken":
+			count := atomic.AddInt32(&refreshCalls, 1)
+			w.Header().Add("Set-Cookie", fmt.Sprintf("Authorization=Bearer token-%d; Path=/", count))
+			writeJSON(w, map[string]any{"ok": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(context.Background(), Config{
+		BaseURL:         server.URL,
+		SharingLink:     server.URL + "/link/" + sharingID,
+		UploadPath:      "gns://upload-dir",
+		Cookie:          "SESSION=logged-in",
+		Timeout:         time.Second,
+		RefreshInterval: 10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	defer client.Close()
+
+	deadline := time.After(500 * time.Millisecond)
+	for atomic.LoadInt32(&refreshCalls) < 2 {
+		select {
+		case <-deadline:
+			t.Fatalf("expected interval refresh after initial call, got %d refreshes", atomic.LoadInt32(&refreshCalls))
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 }
 

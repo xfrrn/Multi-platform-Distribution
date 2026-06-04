@@ -48,6 +48,7 @@ func NewRouter(cfg config.Config, services Services) *gin.Engine {
 	api.GET("/latest/:appSlug/appcast.xml", latest.GetAppcast)
 	api.GET("/latest/:appSlug", latest.Get)
 	api.GET("/artifacts/:artifactId/download", artifacts.Download)
+	api.GET("/artifacts/:artifactId/download/:fileName", artifacts.Download)
 
 	admin := api.Group("")
 	admin.Use(middleware.AdminAuth(cfg.APIKey, services.Tokens))

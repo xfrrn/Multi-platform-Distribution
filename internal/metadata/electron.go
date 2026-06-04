@@ -9,11 +9,13 @@ import (
 )
 
 type ElectronLatest struct {
-	Version     string         `yaml:"version"`
-	Files       []ElectronFile `yaml:"files"`
-	Path        string         `yaml:"path,omitempty"`
-	SHA512      string         `yaml:"sha512,omitempty"`
-	ReleaseDate string         `yaml:"releaseDate"`
+	Version      string         `yaml:"version"`
+	Files        []ElectronFile `yaml:"files"`
+	Path         string         `yaml:"path,omitempty"`
+	SHA512       string         `yaml:"sha512,omitempty"`
+	ReleaseNotes string         `yaml:"releaseNotes,omitempty"`
+	Changelog    string         `yaml:"changelog,omitempty"`
+	ReleaseDate  string         `yaml:"releaseDate"`
 }
 
 type ElectronFile struct {
@@ -24,9 +26,11 @@ type ElectronFile struct {
 
 func RenderElectronLatest(manifest domain.UpdateManifest) ([]byte, error) {
 	latest := ElectronLatest{
-		Version:     manifest.Version,
-		Files:       make([]ElectronFile, 0, len(manifest.Files)),
-		ReleaseDate: manifest.PublishedAt.UTC().Format(time.RFC3339),
+		Version:      manifest.Version,
+		Files:        make([]ElectronFile, 0, len(manifest.Files)),
+		ReleaseNotes: manifest.Changelog,
+		Changelog:    manifest.Changelog,
+		ReleaseDate:  manifest.PublishedAt.UTC().Format(time.RFC3339),
 	}
 
 	for _, file := range manifest.Files {

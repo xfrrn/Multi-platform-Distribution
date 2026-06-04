@@ -19,9 +19,10 @@ import (
 )
 
 type App struct {
-	cfg    config.Config
-	db     *pgxpool.Pool
-	server *http.Server
+	cfg            config.Config
+	db             *pgxpool.Pool
+	server         *http.Server
+	anyshareClient *anyshare.Client
 }
 
 func New(cfg config.Config) (*App, error) {
@@ -70,11 +71,12 @@ func New(cfg config.Config) (*App, error) {
 	var anyshareClient *anyshare.Client
 	if cfg.AnyshareEnabled {
 		anyshareClient, err = anyshare.NewClient(context.Background(), anyshare.Config{
-			BaseURL:     cfg.AnyshareBaseURL,
-			SharingLink: cfg.AnyshareShareLink,
-			UploadPath:  cfg.AnyshareUploadPath,
-			Cookie:      cfg.AnyshareCookie,
-			Timeout:     cfg.AnyshareTimeout,
+			BaseURL:         cfg.AnyshareBaseURL,
+			SharingLink:     cfg.AnyshareShareLink,
+			UploadPath:      cfg.AnyshareUploadPath,
+			Cookie:          cfg.AnyshareCookie,
+			Timeout:         cfg.AnyshareTimeout,
+			RefreshInterval: cfg.AnyshareRefreshInterval,
 		})
 		if err != nil {
 			db.Close()
@@ -110,8 +112,9 @@ func New(cfg config.Config) (*App, error) {
 	})
 
 	return &App{
-		cfg: cfg,
-		db:  db,
+		cfg:            cfg,
+		db:             db,
+		anyshareClient: anyshareClient,
 		server: &http.Server{
 			Addr:    cfg.HTTPAddr,
 			Handler: router,
@@ -139,12 +142,18 @@ func (a *App) Run(ctx context.Context) error {
 func (a *App) Shutdown(ctx context.Context) error {
 	var err error
 	if a.server == nil {
+		if a.anyshareClient != nil {
+			a.anyshareClient.Close()
+		}
 		if a.db != nil {
 			a.db.Close()
 		}
 		return err
 	}
 	err = a.server.Shutdown(ctx)
+	if a.anyshareClient != nil {
+		a.anyshareClient.Close()
+	}
 	if a.db != nil {
 		a.db.Close()
 	}

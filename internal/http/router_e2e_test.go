@@ -184,6 +184,16 @@ func TestAdminReleaseFlow(t *testing.T) {
 	if len(downloadEvents.Items) == 0 || downloadEvents.Items[0].ArtifactID != artifact.ID || downloadEvents.Items[0].ClientID != "client-a" {
 		t.Fatalf("expected download event for artifact %s, got %#v", artifact.ID, downloadEvents.Items)
 	}
+
+	assertStatus(t, request(t, server, http.MethodDelete, "/api/artifacts/"+artifact.ID.String(), nil, bearer), http.StatusNoContent)
+	reuploaded := uploadArtifact(t, server, release.ID, bearer)
+	if reuploaded.ID == artifact.ID {
+		t.Fatal("expected upload after archive to create a new artifact")
+	}
+	artifactList = getJSON[listResponse[domain.Artifact]](t, server, "/api/releases/"+release.ID.String()+"/artifacts", bearer)
+	if len(artifactList.Items) != 1 || artifactList.Items[0].ID != reuploaded.ID {
+		t.Fatalf("expected one active reuploaded artifact, got %#v", artifactList.Items)
+	}
 }
 
 func TestAnyshareArtifactFlow(t *testing.T) {
@@ -236,9 +246,18 @@ func TestAnyshareArtifactFlow(t *testing.T) {
 	if artifact.AnyshareDocID == "" || artifact.AnyshareRev == "" || artifact.AnyshareName == "" {
 		t.Fatalf("expected anyshare metadata, got %#v", artifact)
 	}
-	expectedStableURL := "http://updates.example.test/api/artifacts/" + artifact.ID.String() + "/download"
+	expectedStableURL := "http://updates.example.test/api/artifacts/" + artifact.ID.String() + "/download/desktop-app.exe"
 	if artifact.FileURL != expectedStableURL {
 		t.Fatalf("expected stable artifact url %s, got %s", expectedStableURL, artifact.FileURL)
+	}
+
+	replaced := uploadArtifactWithSource(t, server, release.ID, bearer, "anyshare")
+	if replaced.ID != artifact.ID {
+		t.Fatalf("expected duplicate anyshare upload to replace artifact %s, got %s", artifact.ID, replaced.ID)
+	}
+	artifacts := getJSON[listResponse[domain.Artifact]](t, server, "/api/releases/"+release.ID.String()+"/artifacts", bearer)
+	if len(artifacts.Items) != 1 {
+		t.Fatalf("expected duplicate upload to keep one artifact, got %d", len(artifacts.Items))
 	}
 
 	manifest := getJSON[domain.UpdateManifest](t, server, "/api/latest/anyshare-app/update.json?platform=windows&arch=x64", "")
@@ -1005,6 +1024,10 @@ func (r *memoryRepository) UpdateArtifactFile(ctx context.Context, artifact *dom
 	current.StorageKey = artifact.StorageKey
 	current.FileSize = artifact.FileSize
 	current.SHA512 = artifact.SHA512
+	current.SourceType = artifact.SourceType
+	current.AnyshareDocID = artifact.AnyshareDocID
+	current.AnyshareRev = artifact.AnyshareRev
+	current.AnyshareName = artifact.AnyshareName
 	current.UpdatedAt = time.Now().UTC()
 	r.artifacts[current.ID] = current
 	*artifact = current

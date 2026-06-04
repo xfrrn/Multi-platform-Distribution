@@ -18,11 +18,12 @@ func TestRealAnyshareUploadDownload(t *testing.T) {
 	defer cancel()
 
 	client, err := NewClient(ctx, Config{
-		BaseURL:     os.Getenv("ANYSHARE_BASE_URL"),
-		SharingLink: os.Getenv("ANYSHARE_SHARING_LINK"),
-		UploadPath:  os.Getenv("ANYSHARE_UPLOAD_PATH"),
-		Cookie:      os.Getenv("ANYSHARE_COOKIE"),
-		Timeout:     30 * time.Second,
+		BaseURL:         os.Getenv("ANYSHARE_BASE_URL"),
+		SharingLink:     os.Getenv("ANYSHARE_SHARING_LINK"),
+		UploadPath:      os.Getenv("ANYSHARE_UPLOAD_PATH"),
+		Cookie:          os.Getenv("ANYSHARE_COOKIE"),
+		Timeout:         30 * time.Second,
+		RefreshInterval: envDuration("ANYSHARE_REFRESH_INTERVAL", 30*time.Minute),
 	})
 	if err != nil {
 		t.Fatalf("create client: %v", err)
@@ -54,4 +55,16 @@ func TestRealAnyshareUploadDownload(t *testing.T) {
 	if string(data) != content {
 		t.Fatalf("downloaded content mismatch for %s", uploaded.DocID)
 	}
+}
+
+func envDuration(key string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+	return duration
 }

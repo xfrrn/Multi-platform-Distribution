@@ -15,7 +15,7 @@ services:
     environment:
       HTTP_ADDR: :8080
       DATABASE_URL: postgres://updates:updates@postgres:5432/updates?sslmode=disable
-      PUBLIC_BASE_URL: http://localhost:5173
+      PUBLIC_BASE_URL: http://127.0.0.1:8080
       API_KEY: change-me
       JWT_SECRET: replace-with-a-long-random-secret
       JWT_ISSUER: multi-platform-distribution
@@ -30,7 +30,9 @@ services:
       ANYSHARE_BASE_URL: https://yunpan.ustb.edu.cn
       ANYSHARE_SHARING_LINK: https://yunpan.ustb.edu.cn/link/AA60DDB0BEB3F141A98A7DF75B5F5D7992
       ANYSHARE_UPLOAD_PATH: gns://F766A255ECA64F50B6DD2F7BC692D48F/E36728FC86E441B9A1E4A13BCC12B572
+      ANYSHARE_COOKIE: ${ANYSHARE_COOKIE:-}
       ANYSHARE_TIMEOUT: 10m
+      ANYSHARE_REFRESH_INTERVAL: 30m
     ports:
       - "8080:8080"
     volumes:

@@ -52,6 +52,39 @@ func TestBuildGenericFiltersArtifacts(t *testing.T) {
 	}
 }
 
+func TestBuildGenericAddsFilenameToAnyshareDownloadURL(t *testing.T) {
+	release := domain.Release{
+		ID:          uuid.New(),
+		Version:     "1.2.3",
+		Channel:     "stable",
+		PublishedAt: time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC),
+	}
+	artifacts := []domain.Artifact{
+		{
+			Platform:      "windows",
+			Arch:          "x64",
+			FileType:      "exe",
+			FileName:      "AutoUp LittleTools Setup 0.1.3.exe",
+			FileURL:       "https://updates.example.test/api/artifacts/5963f2c8/download",
+			FileSize:      123,
+			SHA512:        "abc",
+			SourceType:    "anyshare",
+			AnyshareName:  "AutoUp LittleTools Setup 0.1.3.exe",
+			AnyshareDocID: "gns://file",
+		},
+	}
+
+	manifest := BuildGeneric(release, artifacts, "windows", "x64")
+
+	if len(manifest.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(manifest.Files))
+	}
+	expected := "https://updates.example.test/api/artifacts/5963f2c8/download/AutoUp%20LittleTools%20Setup%200.1.3.exe"
+	if manifest.Files[0].URL != expected {
+		t.Fatalf("expected anyshare URL %s, got %s", expected, manifest.Files[0].URL)
+	}
+}
+
 func TestRenderElectronLatest(t *testing.T) {
 	manifest := sampleManifest()
 
@@ -65,6 +98,9 @@ func TestRenderElectronLatest(t *testing.T) {
 	}
 	if !strings.Contains(text, "sha512: abc") {
 		t.Fatalf("expected sha512 in latest.yml, got %s", text)
+	}
+	if !strings.Contains(text, "releaseNotes: ship it") || !strings.Contains(text, "changelog: ship it") {
+		t.Fatalf("expected changelog in latest.yml, got %s", text)
 	}
 }
 
