@@ -152,6 +152,17 @@ export type UploadProgress = {
   lengthComputable: boolean;
 };
 
+export type ServerUploadProgress = {
+  id: string;
+  phase: string;
+  loaded: number;
+  total: number;
+  percent: number;
+  status: "processing" | "done" | "error";
+  error?: string;
+  updated_at: string;
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -264,6 +275,7 @@ export class ApiClient {
     arch: string;
     file_type: string;
     source_type?: "managed" | "anyshare";
+    upload_id?: string;
     file: File;
   }, onProgress?: (progress: UploadProgress) => void): Promise<Artifact> {
     const body = new FormData();
@@ -273,9 +285,16 @@ export class ApiClient {
     if (payload.source_type) {
       body.set("source_type", payload.source_type);
     }
+    if (payload.upload_id) {
+      body.set("upload_id", payload.upload_id);
+    }
     body.set("file", payload.file);
 
     return this.requestUpload<Artifact>(`/api/releases/${releaseId}/artifacts`, "POST", body, onProgress);
+  }
+
+  async getUploadProgress(uploadId: string): Promise<ServerUploadProgress> {
+    return this.request<ServerUploadProgress>(`/api/uploads/${encodeURIComponent(uploadId)}`);
   }
 
   async updateArtifact(artifactId: string, payload: {

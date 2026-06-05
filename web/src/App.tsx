@@ -35,6 +35,7 @@ import {
   StatsBreakdown,
   StatsPoint,
   StatsSummary,
+  ServerUploadProgress,
   UpdateManifest,
   UpdateRequestEvent,
   UploadProgress
@@ -45,7 +46,7 @@ type DetailTab = "overview" | "releases" | "artifacts" | "metadata" | "stats" | 
 type MetaFormat = "json" | "yml" | "xml";
 type ArtifactSource = "managed" | "anyshare";
 type UploadTaskStatus = "uploading" | "processing" | "done" | "error";
-type ArtifactUploadPayload = { platform: string; arch: string; file_type: string; source_type: ArtifactSource; file: File };
+type ArtifactUploadPayload = { platform: string; arch: string; file_type: string; source_type: ArtifactSource; upload_id?: string; file: File };
 type ArtifactUploadTask = {
   id: string;
   releaseId: string;
@@ -56,6 +57,7 @@ type ArtifactUploadTask = {
   total: number;
   progress: number;
   status: UploadTaskStatus;
+  serverPhase?: string;
   error?: string;
 };
 
@@ -111,6 +113,8 @@ function startArtifactUpload(
   onFailed: (err: unknown) => void
 ) {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const uploadPayload = payload.source_type === "anyshare" ? { ...payload, upload_id: id } : payload;
+  let progressTimer: number | undefined;
   addArtifactUploadTask({
     id,
     releaseId,
@@ -123,24 +127,58 @@ function startArtifactUpload(
     status: "uploading"
   });
 
+  if (payload.source_type === "anyshare") {
+    progressTimer = window.setInterval(() => {
+      void api.getUploadProgress(id)
+        .then((progress) => {
+          applyServerUploadProgress(id, payload.file.size, progress);
+        })
+        .catch((err) => {
+          if (err instanceof ApiError && err.status === 404) return;
+          window.clearInterval(progressTimer);
+        });
+    }, 800);
+  }
+
   const handleProgress = (progress: UploadProgress) => {
     updateArtifactUploadTask(id, {
       loaded: progress.loaded,
       total: progress.total || payload.file.size,
       progress: progress.percent,
-      status: progress.lengthComputable && progress.percent >= 100 ? "processing" : "uploading"
+      status: progress.lengthComputable && progress.percent >= 100 ? "processing" : "uploading",
+      serverPhase: progress.lengthComputable && progress.percent >= 100 && payload.source_type === "anyshare" ? "received" : undefined
     });
   };
 
-  void api.uploadArtifact(releaseId, payload, handleProgress)
+  void api.uploadArtifact(releaseId, uploadPayload, handleProgress)
     .then(() => {
-      updateArtifactUploadTask(id, { loaded: payload.file.size, progress: 100, status: "done" });
+      if (progressTimer !== undefined) window.clearInterval(progressTimer);
+      updateArtifactUploadTask(id, { loaded: payload.file.size, progress: 100, status: "done", serverPhase: "done" });
       void Promise.resolve(onFinished()).catch(onFailed);
     })
     .catch((err) => {
+      if (progressTimer !== undefined) window.clearInterval(progressTimer);
       updateArtifactUploadTask(id, { status: "error", error: readError(err) });
       onFailed(err);
     });
+}
+
+function applyServerUploadProgress(id: string, fileSize: number, progress: ServerUploadProgress) {
+  if (progress.status === "error") {
+    updateArtifactUploadTask(id, {
+      status: "error",
+      serverPhase: progress.phase,
+      error: progress.error || "Anyshare 上传失败"
+    });
+    return;
+  }
+  updateArtifactUploadTask(id, {
+    loaded: progress.loaded,
+    total: progress.total || fileSize,
+    progress: progress.percent,
+    status: progress.status === "done" ? "done" : "processing",
+    serverPhase: progress.phase
+  });
 }
 
 export function App() {
@@ -1650,7 +1688,7 @@ function UploadTaskList({ tasks, releases }: { tasks: ArtifactUploadTask[]; rele
             aria-valuemax={100}
             aria-valuenow={task.progress}
           >
-            <span style={{ width: `${Math.max(task.progress, task.status === "uploading" ? 2 : 0)}%` }} />
+            <span style={{ width: `${Math.max(task.progress, task.status === "uploading" || task.status === "processing" ? 2 : 0)}%` }} />
           </div>
           {task.error && <div className="uploadTaskError">{task.error}</div>}
         </div>
@@ -1826,6 +1864,9 @@ function readError(err: unknown): string {
 }
 
 function uploadTaskStatus(task: ArtifactUploadTask): string {
+  if (task.status === "processing" && task.serverPhase === "received") return "Anyshare 准备中";
+  if (task.status === "processing" && task.serverPhase === "anyshare") return `Anyshare ${task.progress}%`;
+  if (task.status === "processing" && task.serverPhase === "finalizing") return "Anyshare 收尾中";
   if (task.status === "done") return "完成";
   if (task.status === "error") return "失败";
   if (task.status === "processing") return "服务器处理中";

@@ -72,6 +72,7 @@ func NewRouter(cfg config.Config, services Services) *gin.Engine {
 	admin.PATCH("/releases/:releaseId", releases.Update)
 	admin.DELETE("/releases/:releaseId", releases.Archive)
 	admin.GET("/releases/:releaseId/artifacts", artifacts.ListByRelease)
+	admin.GET("/uploads/:uploadId", artifacts.UploadProgress)
 	admin.GET("/artifacts/:artifactId", artifacts.Get)
 	admin.PATCH("/artifacts/:artifactId", artifacts.Update)
 	admin.PUT("/artifacts/:artifactId/file", artifacts.ReplaceFile)

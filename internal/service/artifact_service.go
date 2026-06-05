@@ -29,6 +29,14 @@ type UploadArtifactInput struct {
 	FileName   string
 	SourceType string
 	Body       io.Reader
+	Progress   func(UploadProgress)
+}
+
+type UploadProgress struct {
+	Phase   string
+	Loaded  int64
+	Total   int64
+	Percent int
 }
 
 type UpdateArtifactInput struct {
@@ -85,10 +93,10 @@ func (s *ArtifactService) Upload(ctx context.Context, input UploadArtifactInput)
 		return domain.Artifact{}, err
 	}
 	if ok {
-		return s.replaceArtifactFile(ctx, existing, release, sourceType, name, input.Body)
+		return s.replaceArtifactFile(ctx, existing, release, sourceType, name, input.Body, input.Progress)
 	}
 	if sourceType == "anyshare" {
-		return s.uploadAnyshare(context.WithoutCancel(ctx), release.ID, platform, arch, fileType, name, input.Body)
+		return s.uploadAnyshare(context.WithoutCancel(ctx), release.ID, platform, arch, fileType, name, input.Body, input.Progress)
 	}
 
 	key := strings.Join([]string{
@@ -176,16 +184,16 @@ func (s *ArtifactService) ReplaceFile(ctx context.Context, id uuid.UUID, input R
 	if fileName == "" {
 		fileName = artifact.FileName
 	}
-	return s.replaceArtifactFile(ctx, artifact, release, normalizeArtifactSource(artifact.SourceType), fileName, input.Body)
+	return s.replaceArtifactFile(ctx, artifact, release, normalizeArtifactSource(artifact.SourceType), fileName, input.Body, nil)
 }
 
-func (s *ArtifactService) replaceArtifactFile(ctx context.Context, artifact domain.Artifact, release domain.Release, sourceType, fileName string, body io.Reader) (domain.Artifact, error) {
+func (s *ArtifactService) replaceArtifactFile(ctx context.Context, artifact domain.Artifact, release domain.Release, sourceType, fileName string, body io.Reader, progress func(UploadProgress)) (domain.Artifact, error) {
 	if sourceType == "anyshare" {
 		if s.anyshare == nil {
 			return domain.Artifact{}, errors.New("anyshare storage is not enabled")
 		}
 		uploadCtx := context.WithoutCancel(ctx)
-		obj, err := s.anyshare.Upload(uploadCtx, fileName, body)
+		obj, err := s.uploadAnyshareObject(uploadCtx, fileName, body, progress)
 		if err != nil {
 			return domain.Artifact{}, err
 		}
@@ -265,11 +273,11 @@ func (s *ArtifactService) DownloadURL(ctx context.Context, artifact domain.Artif
 	return result.URL, nil
 }
 
-func (s *ArtifactService) uploadAnyshare(ctx context.Context, releaseID uuid.UUID, platform, arch, fileType, name string, body io.Reader) (domain.Artifact, error) {
+func (s *ArtifactService) uploadAnyshare(ctx context.Context, releaseID uuid.UUID, platform, arch, fileType, name string, body io.Reader, progress func(UploadProgress)) (domain.Artifact, error) {
 	if s.anyshare == nil {
 		return domain.Artifact{}, errors.New("anyshare storage is not enabled")
 	}
-	obj, err := s.anyshare.Upload(ctx, name, body)
+	obj, err := s.uploadAnyshareObject(ctx, name, body, progress)
 	if err != nil {
 		return domain.Artifact{}, err
 	}
@@ -294,6 +302,32 @@ func (s *ArtifactService) uploadAnyshare(ctx context.Context, releaseID uuid.UUI
 		return domain.Artifact{}, err
 	}
 	return artifact, nil
+}
+
+func (s *ArtifactService) uploadAnyshareObject(ctx context.Context, name string, body io.Reader, progress func(UploadProgress)) (anyshare.UploadResult, error) {
+	if progress != nil {
+		progress(UploadProgress{Phase: "anyshare", Loaded: 0, Total: 0, Percent: 0})
+	}
+	obj, err := s.anyshare.UploadWithProgress(ctx, name, body, func(p anyshare.UploadProgress) {
+		if progress == nil {
+			return
+		}
+		percent := 0
+		if p.Total > 0 {
+			percent = int((p.Loaded * 100) / p.Total)
+			if percent > 100 {
+				percent = 100
+			}
+		}
+		progress(UploadProgress{Phase: "anyshare", Loaded: p.Loaded, Total: p.Total, Percent: percent})
+	})
+	if err != nil {
+		return anyshare.UploadResult{}, err
+	}
+	if progress != nil {
+		progress(UploadProgress{Phase: "finalizing", Loaded: obj.Size, Total: obj.Size, Percent: 100})
+	}
+	return obj, nil
 }
 
 func (s *ArtifactService) artifactDownloadURL(id uuid.UUID, fileName ...string) string {

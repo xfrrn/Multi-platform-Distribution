@@ -12,10 +12,11 @@ import (
 type ArtifactHandler struct {
 	artifacts *service.ArtifactService
 	stats     *service.StatsService
+	uploads   *uploadProgressStore
 }
 
 func NewArtifactHandler(artifacts *service.ArtifactService, stats *service.StatsService) *ArtifactHandler {
-	return &ArtifactHandler{artifacts: artifacts, stats: stats}
+	return &ArtifactHandler{artifacts: artifacts, stats: stats, uploads: newUploadProgressStore()}
 }
 
 func (h *ArtifactHandler) Upload(c *gin.Context) {
@@ -37,18 +38,42 @@ func (h *ArtifactHandler) Upload(c *gin.Context) {
 	}
 	defer file.Close()
 
+	uploadID := c.PostForm("upload_id")
+	sourceType := c.PostForm("source_type")
+	if uploadID != "" && sourceType == "anyshare" {
+		h.uploads.update(uploadID, uploadProgressSnapshot{Phase: "received", Status: "processing", Percent: 0})
+	}
+
 	artifact, err := h.artifacts.Upload(c.Request.Context(), service.UploadArtifactInput{
 		ReleaseID:  releaseID,
 		Platform:   c.PostForm("platform"),
 		Arch:       c.PostForm("arch"),
 		FileType:   c.PostForm("file_type"),
 		FileName:   fileHeader.Filename,
-		SourceType: c.PostForm("source_type"),
+		SourceType: sourceType,
 		Body:       file,
+		Progress: func(progress service.UploadProgress) {
+			if uploadID == "" || sourceType != "anyshare" {
+				return
+			}
+			h.uploads.update(uploadID, uploadProgressSnapshot{
+				Phase:   progress.Phase,
+				Loaded:  progress.Loaded,
+				Total:   progress.Total,
+				Percent: progress.Percent,
+				Status:  "processing",
+			})
+		},
 	})
 	if err != nil {
+		if uploadID != "" && sourceType == "anyshare" {
+			h.uploads.update(uploadID, uploadProgressSnapshot{Phase: "anyshare", Status: "error", Error: err.Error(), Percent: 0})
+		}
 		writeError(c, err)
 		return
+	}
+	if uploadID != "" && sourceType == "anyshare" {
+		h.uploads.update(uploadID, uploadProgressSnapshot{Phase: "done", Loaded: artifact.FileSize, Total: artifact.FileSize, Percent: 100, Status: "done"})
 	}
 	c.JSON(http.StatusCreated, artifact)
 }

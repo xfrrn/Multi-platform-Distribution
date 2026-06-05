@@ -58,6 +58,11 @@ type DownloadResult struct {
 	Size int64
 }
 
+type UploadProgress struct {
+	Loaded int64
+	Total  int64
+}
+
 type uploadConfig struct {
 	URL    string
 	Fields map[string]string
@@ -131,6 +136,10 @@ func (c *Client) Close() {
 }
 
 func (c *Client) Upload(ctx context.Context, fileName string, body io.Reader) (UploadResult, error) {
+	return c.UploadWithProgress(ctx, fileName, body, nil)
+}
+
+func (c *Client) UploadWithProgress(ctx context.Context, fileName string, body io.Reader, onProgress func(UploadProgress)) (UploadResult, error) {
 	if err := c.ensureAuthorization(ctx); err != nil {
 		return UploadResult{}, err
 	}
@@ -161,7 +170,7 @@ func (c *Client) Upload(ctx context.Context, fileName string, body io.Reader) (U
 	if err != nil {
 		return UploadResult{}, err
 	}
-	if err := c.doUpload(ctx, cfg, name, temp); err != nil {
+	if err := c.doUpload(ctx, cfg, name, size, temp, onProgress); err != nil {
 		return UploadResult{}, err
 	}
 	if err := c.endUpload(ctx, cfg); err != nil {
@@ -430,39 +439,122 @@ func (c *Client) beginUpload(ctx context.Context, name string, size int64) (uplo
 	return uploadConfig{URL: uploadURL, Fields: fields, DocID: response.DocID, Rev: response.Rev}, nil
 }
 
-func (c *Client) doUpload(ctx context.Context, cfg uploadConfig, name string, file io.Reader) error {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	for key, value := range cfg.Fields {
-		if err := writer.WriteField(key, value); err != nil {
+func (c *Client) doUpload(ctx context.Context, cfg uploadConfig, name string, size int64, file io.ReadSeeker, onProgress func(UploadProgress)) error {
+	const maxAttempts = 3
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("rewind anyshare upload file: %w", err)
+		}
+		if onProgress != nil {
+			onProgress(UploadProgress{Loaded: 0, Total: size})
+		}
+
+		body, contentType, contentLength, err := multipartUploadBody(cfg.Fields, name, size, &progressReader{
+			reader: file,
+			total:  size,
+			onProgress: func(loaded, total int64) {
+				if onProgress != nil {
+					onProgress(UploadProgress{Loaded: loaded, Total: total})
+				}
+			},
+		})
+		if err != nil {
 			return err
 		}
-	}
-	part, err := writer.CreateFormFile("file", name)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(part, file); err != nil {
-		return err
-	}
-	if err := writer.Close(); err != nil {
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.URL, body)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", contentType)
+		req.ContentLength = contentLength
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("upload anyshare object: %w", err)
+			if attempt < maxAttempts-1 {
+				if err := sleepBeforeUploadRetry(ctx, attempt); err != nil {
+					return err
+				}
+				continue
+			}
+			return lastErr
+		}
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			resp.Body.Close()
+			return nil
+		}
+		if isRetryableUploadStatus(resp.StatusCode) && attempt < maxAttempts-1 {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			resp.Body.Close()
+			if err := sleepBeforeUploadRetry(ctx, attempt); err != nil {
+				return err
+			}
+			continue
+		}
+
+		err = responseError("upload anyshare object", resp)
+		resp.Body.Close()
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.URL, &body)
-	if err != nil {
-		return err
+	if lastErr != nil {
+		return lastErr
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("upload anyshare object: %w", err)
+	return errors.New("upload anyshare object failed after retries")
+}
+
+type progressReader struct {
+	reader     io.Reader
+	loaded     int64
+	total      int64
+	onProgress func(loaded, total int64)
+}
+
+func (r *progressReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		r.loaded += int64(n)
+		if r.onProgress != nil {
+			r.onProgress(r.loaded, r.total)
+		}
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return responseError("upload anyshare object", resp)
+	return n, err
+}
+
+func multipartUploadBody(fields map[string]string, name string, size int64, file io.Reader) (io.Reader, string, int64, error) {
+	var header bytes.Buffer
+	writer := multipart.NewWriter(&header)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			return nil, "", 0, err
+		}
 	}
-	return nil
+	if _, err := writer.CreateFormFile("file", name); err != nil {
+		return nil, "", 0, err
+	}
+
+	footer := []byte("\r\n--" + writer.Boundary() + "--\r\n")
+	body := io.MultiReader(bytes.NewReader(header.Bytes()), file, bytes.NewReader(footer))
+	contentLength := int64(header.Len()) + size + int64(len(footer))
+	return body, writer.FormDataContentType(), contentLength, nil
+}
+
+func isRetryableUploadStatus(status int) bool {
+	return status == http.StatusRequestTimeout || status == http.StatusTooManyRequests || status >= 500
+}
+
+func sleepBeforeUploadRetry(ctx context.Context, attempt int) error {
+	timer := time.NewTimer(time.Duration(attempt+1) * 200 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (c *Client) endUpload(ctx context.Context, cfg uploadConfig) error {

@@ -177,6 +177,84 @@ func TestClientUploadRefreshesAuthorizationFromCookie(t *testing.T) {
 	}
 }
 
+func TestClientRetriesObjectUploadAfterDisconnect(t *testing.T) {
+	const sharingID = "AA60DDB0BEB3F141A98A7DF75B5F5D7992"
+	var uploadCalls int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/link/" + sharingID:
+			w.Header().Add("Set-Cookie", "link_token:"+sharingID+"=anon-token; Path=/")
+			w.WriteHeader(http.StatusOK)
+		case "/api/efast/v1/file/osbeginupload":
+			writeJSON(w, map[string]any{
+				"docid": "gns://file-docid",
+				"rev":   "file-rev",
+				"authrequest": []string{
+					"POST",
+					serverURL(r) + "/upload",
+					"AWSAccessKeyId: key",
+					"Content-Type: application/octet-stream",
+					"Policy: policy",
+					"Signature: signature",
+					"key: object-key",
+				},
+			})
+		case "/upload":
+			count := atomic.AddInt32(&uploadCalls, 1)
+			if count == 1 {
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err != nil {
+					t.Fatalf("hijack upload connection: %v", err)
+				}
+				_ = conn.Close()
+				return
+			}
+			if len(r.TransferEncoding) != 0 {
+				t.Fatalf("expected upload to use content-length, got transfer encoding %#v", r.TransferEncoding)
+			}
+			if r.ContentLength <= int64(len("payload")) {
+				t.Fatalf("expected multipart upload content-length, got %d", r.ContentLength)
+			}
+			if err := r.ParseMultipartForm(10 << 20); err != nil {
+				t.Fatalf("parse retried multipart upload: %v", err)
+			}
+			file, header, err := r.FormFile("file")
+			if err != nil {
+				t.Fatalf("read retried uploaded file: %v", err)
+			}
+			_ = file.Close()
+			if header.Filename != "installer.exe" {
+				t.Fatalf("expected retried filename installer.exe, got %s", header.Filename)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case "/api/efast/v1/file/osendupload":
+			writeJSON(w, map[string]any{"ok": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(context.Background(), Config{
+		BaseURL:     server.URL,
+		SharingLink: server.URL + "/link/" + sharingID,
+		UploadPath:  "gns://upload-dir",
+		Timeout:     time.Second,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.Upload(context.Background(), "installer.exe", strings.NewReader("payload"))
+	if err != nil {
+		t.Fatalf("upload after retry: %v", err)
+	}
+	if uploadCalls != 2 {
+		t.Fatalf("expected object upload to be retried once, got %d calls", uploadCalls)
+	}
+}
+
 func TestClientRetriesPostJSONAfterUnauthorizedRefresh(t *testing.T) {
 	const sharingID = "AA60DDB0BEB3F141A98A7DF75B5F5D7992"
 	var beginCalls int
