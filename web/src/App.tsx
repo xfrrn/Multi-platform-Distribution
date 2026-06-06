@@ -491,7 +491,7 @@ function AppDetail({
   const [releases, setReleases] = useState<Release[]>([]);
   const [artifacts, setArtifacts] = useState<Record<string, Artifact[]>>({});
   const [selectedRelease, setSelectedRelease] = useState("");
-  const [serverConfig, setServerConfig] = useState<ServerConfig>({ anyshare_enabled: false });
+  const [serverConfig, setServerConfig] = useState<ServerConfig>({ anyshare_enabled: false, public_base_url: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -505,7 +505,7 @@ function AppDetail({
     setError("");
     try {
       const [config, releaseItems] = await Promise.all([
-        api.getConfig().catch(() => ({ anyshare_enabled: false })),
+        api.getConfig().catch(() => ({ anyshare_enabled: false, public_base_url: "" })),
         api.listReleases(initialApp.id)
       ]);
       setServerConfig(config);
@@ -550,7 +550,13 @@ function AppDetail({
       {loading && <div className="emptyState compact">正在同步应用数据...</div>}
 
       {tab === "overview" && (
-        <OverviewTab app={app} latest={latest} releases={releases} artifacts={allArtifacts} />
+        <OverviewTab
+          app={app}
+          publicBaseURL={serverConfig.public_base_url}
+          latest={latest}
+          releases={releases}
+          artifacts={allArtifacts}
+        />
       )}
       {tab === "releases" && (
         <ReleasesTab
@@ -590,17 +596,20 @@ function AppDetail({
 
 function OverviewTab({
   app,
+  publicBaseURL,
   latest,
   releases,
   artifacts
 }: {
   app: DesktopApp;
+  publicBaseURL: string;
   latest?: Release;
   releases: Release[];
   artifacts: Artifact[];
 }) {
   const platforms = Array.from(new Set(artifacts.map((artifact) => artifact.platform)));
   const recentArtifacts = artifacts.slice(0, 5);
+  const updateJSONURL = absoluteMetadataURL(publicBaseURL, app.slug, "update.json");
 
   return (
     <div className="detailGrid">
@@ -613,7 +622,7 @@ function OverviewTab({
         <dl>
           <InfoItem label="Slug" value={app.slug} />
           <InfoItem label="默认渠道" value={app.default_channel} />
-          <InfoItem label="接入地址" value={`/api/latest/${app.slug}/update.json`} />
+          <InfoItem label="接入地址" value={updateJSONURL} />
         </dl>
       </section>
       <section className="panel">
@@ -1846,6 +1855,12 @@ function metadataURL(slug: string, format: MetaFormat, channel: string, platform
   const suffix = format === "json" ? "update.json" : format === "yml" ? "latest.yml" : "appcast.xml";
   const query = metadataParams(channel, platform, arch, clientID).toString();
   return `/api/latest/${slug}/${suffix}${query ? `?${query}` : ""}`;
+}
+
+function absoluteMetadataURL(publicBaseURL: string, slug: string, suffix: string): string {
+  const path = `/api/latest/${slug}/${suffix}`;
+  if (!publicBaseURL) return path;
+  return `${publicBaseURL.replace(/\/+$/, "")}${path}`;
 }
 
 function formatDateTime(value: string): string {

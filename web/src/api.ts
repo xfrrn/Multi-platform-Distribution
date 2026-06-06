@@ -54,6 +54,7 @@ export type Artifact = {
 
 export type ServerConfig = {
   anyshare_enabled: boolean;
+  public_base_url: string;
 };
 
 export type UpdateManifest = {
