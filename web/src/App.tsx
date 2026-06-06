@@ -46,6 +46,7 @@ type DetailTab = "overview" | "releases" | "artifacts" | "metadata" | "stats" | 
 type MetaFormat = "json" | "yml" | "xml";
 type ArtifactSource = "managed" | "anyshare";
 type UploadTaskStatus = "uploading" | "processing" | "done" | "error";
+type Toast = { id: number; message: string; tone: "success" | "error" };
 type ArtifactUploadPayload = { platform: string; arch: string; file_type: string; source_type: ArtifactSource; upload_id?: string; file: File };
 type ArtifactUploadTask = {
   id: string;
@@ -192,6 +193,7 @@ export function App() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [showCreateApp, setShowCreateApp] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
 
   useEffect(() => {
     api.setToken(token);
@@ -263,6 +265,23 @@ export function App() {
     setSelectedApp(null);
     setView("home");
     void refreshHome();
+  }
+
+  function showToast(message: string, tone: Toast["tone"]) {
+    const id = Date.now();
+    setToast({ id, message, tone });
+    window.setTimeout(() => {
+      setToast((current) => current?.id === id ? null : current);
+    }, 1800);
+  }
+
+  async function copyText(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast("已复制", "success");
+    } catch {
+      showToast("复制失败", "error");
+    }
   }
 
   if (!token) {
@@ -344,6 +363,7 @@ export function App() {
             initialApp={selectedApp}
             onAppChanged={(app) => setSelectedApp(app)}
             onArchived={goHome}
+            onCopy={copyText}
           />
         )}
 
@@ -360,6 +380,12 @@ export function App() {
             openApp(app);
           }}
         />
+      )}
+
+      {toast && (
+        <div className={`toast ${toast.tone}`} role="status" aria-live="polite">
+          {toast.message}
+        </div>
       )}
     </div>
   );
@@ -479,12 +505,14 @@ function AppDetail({
   api,
   initialApp,
   onAppChanged,
-  onArchived
+  onArchived,
+  onCopy
 }: {
   api: ApiClient;
   initialApp: DesktopApp;
   onAppChanged: (app: DesktopApp) => void;
   onArchived: () => void;
+  onCopy: (value: string) => void | Promise<void>;
 }) {
   const [app, setApp] = useState(initialApp);
   const [tab, setTab] = useState<DetailTab>("overview");
@@ -577,9 +605,10 @@ function AppDetail({
           onRelease={setSelectedRelease}
           onError={setError}
           onChanged={refreshDetail}
+          onCopy={onCopy}
         />
       )}
-      {tab === "metadata" && <MetadataTab api={api} app={app} publicBaseURL={serverConfig.public_base_url} />}
+      {tab === "metadata" && <MetadataTab api={api} app={app} publicBaseURL={serverConfig.public_base_url} onCopy={onCopy} />}
       {tab === "stats" && <AppStatsTab api={api} app={app} />}
       {tab === "settings" && (
         <SettingsTab
@@ -796,7 +825,8 @@ function ArtifactsTab({
   selectedRelease,
   onRelease,
   onError,
-  onChanged
+  onChanged,
+  onCopy
 }: {
   api: ApiClient;
   releases: Release[];
@@ -806,6 +836,7 @@ function ArtifactsTab({
   onRelease: (id: string) => void;
   onError: (error: string) => void;
   onChanged: () => Promise<void>;
+  onCopy: (value: string) => void | Promise<void>;
 }) {
   const [platformFilter, setPlatformFilter] = useState("");
   const [archFilter, setArchFilter] = useState("");
@@ -866,6 +897,7 @@ function ArtifactsTab({
           <ArtifactTable
             artifacts={visibleArtifacts}
             releases={releases}
+            onCopy={onCopy}
             onArchive={async (artifact) => {
               if (!window.confirm(`归档安装包 ${artifact.file_name || artifact.id}？`)) return;
               onError("");
@@ -905,6 +937,7 @@ function ArtifactTable({
   artifacts,
   releases,
   readonly,
+  onCopy,
   onArchive,
   onSave,
   onReplace
@@ -912,6 +945,7 @@ function ArtifactTable({
   artifacts: Artifact[];
   releases: Release[];
   readonly?: boolean;
+  onCopy?: (value: string) => void | Promise<void>;
   onArchive?: (artifact: Artifact) => Promise<void>;
   onSave?: (artifact: Artifact, patch: { platform: string; arch: string; file_type: string; file_name: string }) => Promise<void>;
   onReplace?: (artifact: Artifact, file: File) => Promise<void>;
@@ -939,6 +973,7 @@ function ArtifactTable({
                 release={release}
                 readonly={readonly}
                 key={artifact.id}
+                onCopy={onCopy}
                 onArchive={onArchive}
                 onSave={onSave}
                 onReplace={onReplace}
@@ -955,6 +990,7 @@ function ArtifactRow({
   artifact,
   release,
   readonly,
+  onCopy,
   onArchive,
   onSave,
   onReplace
@@ -962,6 +998,7 @@ function ArtifactRow({
   artifact: Artifact;
   release?: Release;
   readonly?: boolean;
+  onCopy?: (value: string) => void | Promise<void>;
   onArchive?: (artifact: Artifact) => Promise<void>;
   onSave?: (artifact: Artifact, patch: { platform: string; arch: string; file_type: string; file_name: string }) => Promise<void>;
   onReplace?: (artifact: Artifact, file: File) => Promise<void>;
@@ -984,7 +1021,7 @@ function ArtifactRow({
         {!readonly && (
           <td>
             <div className="tableActions">
-              <button className="copyButton" title="复制下载链接" onClick={() => void navigator.clipboard.writeText(artifact.file_url)}>
+              <button className="copyButton" title="复制下载链接" onClick={() => void onCopy?.(artifact.file_url)}>
                 <Copy size={15} />
               </button>
               <button className="copyButton" title="编辑" onClick={() => setEditing(true)}>
@@ -1045,7 +1082,17 @@ function ArtifactRow({
   );
 }
 
-function MetadataTab({ api, app, publicBaseURL }: { api: ApiClient; app: DesktopApp; publicBaseURL: string }) {
+function MetadataTab({
+  api,
+  app,
+  publicBaseURL,
+  onCopy
+}: {
+  api: ApiClient;
+  app: DesktopApp;
+  publicBaseURL: string;
+  onCopy: (value: string) => void | Promise<void>;
+}) {
   const [format, setFormat] = useState<MetaFormat>("json");
   const [channel, setChannel] = useState(app.default_channel);
   const [platform, setPlatform] = useState("");
@@ -1118,7 +1165,7 @@ function MetadataTab({ api, app, publicBaseURL }: { api: ApiClient; app: Desktop
             {item === "json" ? "update.json" : item === "yml" ? "latest.yml" : "appcast.xml"}
           </button>
         ))}
-        <button className="copyButton" title="复制 URL" onClick={() => void navigator.clipboard.writeText(url)}>
+        <button className="copyButton" title="复制 URL" onClick={() => void onCopy(url)}>
           <Copy size={16} />
         </button>
       </div>

@@ -364,11 +364,53 @@ func TestAdminAPIKeyCanAccessManagementRoutes(t *testing.T) {
 	}
 }
 
+func TestAdminConfigIncludesPublicBaseURL(t *testing.T) {
+	router := NewRouter(config.Config{
+		APIKey:          "ci-key",
+		PublicBaseURL:   "https://updates.example.test",
+		AnyshareEnabled: true,
+	}, Services{})
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/config", nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	req.Header.Set("X-API-Key", "ci-key")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("send request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		t.Fatalf("GET /api/config got status %d: %s", resp.StatusCode, string(data))
+	}
+
+	var config configResponse
+	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if !config.AnyshareEnabled {
+		t.Fatal("expected anyshare_enabled to be true")
+	}
+	if config.PublicBaseURL != "https://updates.example.test" {
+		t.Fatalf("expected public_base_url https://updates.example.test, got %s", config.PublicBaseURL)
+	}
+}
+
 type loginResponse struct {
 	AccessToken string           `json:"access_token"`
 	TokenType   string           `json:"token_type"`
 	ExpiresAt   time.Time        `json:"expires_at"`
 	Admin       domain.AdminUser `json:"admin"`
+}
+
+type configResponse struct {
+	AnyshareEnabled bool   `json:"anyshare_enabled"`
+	PublicBaseURL   string `json:"public_base_url"`
 }
 
 type listResponse[T any] struct {
