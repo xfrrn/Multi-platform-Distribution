@@ -579,7 +579,7 @@ function AppDetail({
           onChanged={refreshDetail}
         />
       )}
-      {tab === "metadata" && <MetadataTab api={api} app={app} />}
+      {tab === "metadata" && <MetadataTab api={api} app={app} publicBaseURL={serverConfig.public_base_url} />}
       {tab === "stats" && <AppStatsTab api={api} app={app} />}
       {tab === "settings" && (
         <SettingsTab
@@ -1045,7 +1045,7 @@ function ArtifactRow({
   );
 }
 
-function MetadataTab({ api, app }: { api: ApiClient; app: DesktopApp }) {
+function MetadataTab({ api, app, publicBaseURL }: { api: ApiClient; app: DesktopApp; publicBaseURL: string }) {
   const [format, setFormat] = useState<MetaFormat>("json");
   const [channel, setChannel] = useState(app.default_channel);
   const [platform, setPlatform] = useState("");
@@ -1076,7 +1076,7 @@ function MetadataTab({ api, app }: { api: ApiClient; app: DesktopApp }) {
     }
   }
 
-  const url = metadataURL(app.slug, format, channel, platform, arch, clientID);
+  const url = metadataURL(app.slug, format, channel, platform, arch, clientID, publicBaseURL);
 
   return (
     <section className="panel metadataPanel">
@@ -1851,10 +1851,10 @@ function metadataParams(channel: string, platform: string, arch: string, clientI
   return params;
 }
 
-function metadataURL(slug: string, format: MetaFormat, channel: string, platform: string, arch: string, clientID: string): string {
+function metadataURL(slug: string, format: MetaFormat, channel: string, platform: string, arch: string, clientID: string, publicBaseURL = ""): string {
   const suffix = format === "json" ? "update.json" : format === "yml" ? "latest.yml" : "appcast.xml";
   const query = metadataParams(channel, platform, arch, clientID).toString();
-  return `/api/latest/${slug}/${suffix}${query ? `?${query}` : ""}`;
+  return `${absoluteMetadataURL(publicBaseURL, slug, suffix)}${query ? `?${query}` : ""}`;
 }
 
 function absoluteMetadataURL(publicBaseURL: string, slug: string, suffix: string): string {
