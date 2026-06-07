@@ -1,0 +1,18 @@
+.home-view { padding-top: 24px; }
+.home-tools { display: flex; justify-content: flex-start; margin-bottom: 18px; }
+.app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+.home-create-first {
+  width: min(290px, 100%);
+  min-height: 138px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  cursor: pointer;
+}

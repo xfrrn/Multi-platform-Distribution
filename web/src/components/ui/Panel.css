@@ -1,0 +1,15 @@
+.panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 18px;
+  font-family: var(--font-body);
+}
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 14px;
+  color: var(--fg);
+}
+.panel-title h2 { font-size: var(--text-lg); margin: 0; font-weight: 650; }

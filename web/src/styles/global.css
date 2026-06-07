@@ -1,0 +1,6 @@
+/* ── Global reset + shared utilities ── */
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; font-family: var(--font-body); color: var(--fg); background: var(--bg); }
+button, input, select, textarea { font: inherit; letter-spacing: 0; }
+button { cursor: pointer; }
+h1, h2, p { margin: 0; }

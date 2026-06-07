@@ -1,0 +1,16 @@
+.detail-view { padding-top: 24px; }
+.tab-refresh { margin-left: auto; }
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 18px;
+}
+
+.notice { margin: 16px 0; padding: 12px 14px; border-radius: var(--radius-md); font-family: var(--font-body); }
+.notice.error { color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger-border); }
+
+@media (max-width: 860px) {
+  .detail-grid { grid-template-columns: 1fr; }
+  .tab-refresh { margin-left: 0; }
+}

@@ -1,0 +1,10 @@
+.empty-state {
+  padding: 24px;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+}
+.empty-state-compact { padding: 16px; }

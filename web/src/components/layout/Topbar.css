@@ -1,0 +1,21 @@
+.topbar {
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding-bottom: 22px;
+  border-bottom: 2px solid var(--border);
+}
+.eyebrow { margin: 0 0 4px; color: var(--muted); font-size: var(--text-sm); }
+.topbar h1 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, var(--text-2xl));
+  font-weight: 720;
+}
+.topbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+@media (max-width: 860px) {
+  .topbar { flex-direction: column; align-items: flex-start; }
+  .topbar-actions { justify-content: flex-start; }
+}

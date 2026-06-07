@@ -1,0 +1,19 @@
+.stack-form { display: grid; gap: 13px; }
+.two-cols { display: grid; grid-template-columns: 1fr 140px; gap: 12px; }
+.check-line { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: var(--text-sm); }
+.check-line input { width: 16px; height: 16px; min-height: 16px; }
+.row-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.release-panel { grid-column: span 1; }
+.release-wide { grid-column: span 1; }
+.release-editor-list { display: grid; gap: 12px; }
+.release-editor {
+  display: grid; gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+@media (max-width: 860px) {
+  .two-cols { grid-template-columns: 1fr; }
+}

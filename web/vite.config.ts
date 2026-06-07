@@ -9,5 +9,15 @@ export default defineConfig({
       "/api": "http://localhost:8080",
       "/downloads": "http://localhost:8080"
     }
-  }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom"],
+          icons: ["lucide-react"],
+        },
+      },
+    },
+  },
 });

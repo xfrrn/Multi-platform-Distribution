@@ -40,3 +40,4 @@ Thumbs.db
 # Dependency and cache directories
 .cache/
 node_modules/
+.od-skills/

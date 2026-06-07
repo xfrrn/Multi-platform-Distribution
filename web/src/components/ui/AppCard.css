@@ -1,0 +1,55 @@
+.app-card {
+  position: relative;
+  min-height: 138px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast);
+}
+.app-card:hover {
+  border-color: color-mix(in oklab, var(--accent) 50%, transparent);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.app-card-icon {
+  width: 54px; height: 54px;
+  display: grid; place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  color: #fff;
+  background: linear-gradient(135deg, #223047, #26736e);
+  font-weight: 700;
+  font-size: var(--text-2xl);
+}
+.app-card-icon img { width: 100%; height: 100%; object-fit: cover; }
+.app-card h2 { font-size: var(--text-lg); line-height: 1.25; margin: 0 0 5px; }
+.app-card p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.app-card-meta {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  padding-bottom: 24px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.app-card > .badge {
+  position: absolute;
+  left: 18px;
+  bottom: 16px;
+}
+.app-card-arrow {
+  position: absolute;
+  right: 16px;
+  bottom: 17px;
+  color: var(--muted);
+}
