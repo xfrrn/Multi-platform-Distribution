@@ -1,5 +1,9 @@
 .empty-state {
-  padding: 24px;
+  padding: 28px 24px;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  text-align: center;
   color: var(--muted);
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
@@ -7,4 +11,8 @@
   font-family: var(--font-body);
   font-size: var(--text-base);
 }
-.empty-state-compact { padding: 16px; }
+.empty-state-compact { padding: 18px 14px; gap: 6px; }
+.empty-state-icon { color: var(--muted); opacity: 0.55; }
+.empty-state-title { color: var(--fg); font-weight: 650; font-size: var(--text-lg); margin: 0; }
+.empty-state-body { font-size: var(--text-sm); line-height: 1.45; max-width: 340px; }
+.empty-state-action { margin-top: 4px; }

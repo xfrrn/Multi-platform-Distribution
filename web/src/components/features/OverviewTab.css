@@ -9,7 +9,7 @@
   display: grid; place-items: center; overflow: hidden;
   border-radius: var(--radius-md);
   color: #fff;
-  background: linear-gradient(135deg, #223047, #26736e);
+  background: var(--accent-gradient);
   font-weight: 700;
   font-size: 28px;
 }

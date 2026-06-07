@@ -14,6 +14,8 @@
   --accent-hover:  #1a5fd4;
   --accent-active: #164db8;
   --accent-subtle: #f0f6ff;
+  --accent-gradient: linear-gradient(135deg, #1f6feb, #4f8ff7);
+  --accent-bg:     #f0f6ff;
 
   /* Semantic */
   --success:       #16a34a;

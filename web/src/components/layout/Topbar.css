@@ -5,7 +5,7 @@
   justify-content: space-between;
   gap: var(--space-5);
   padding-bottom: 22px;
-  border-bottom: 2px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 .eyebrow { margin: 0 0 4px; color: var(--muted); font-size: var(--text-sm); }
 .topbar h1 {

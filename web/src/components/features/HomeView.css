@@ -14,5 +14,7 @@
   color: var(--fg);
   font-family: var(--font-body);
   font-size: var(--text-base);
-  cursor: pointer;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
+.home-create-first:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+.home-create-first:hover { border-color: var(--border-focus); }

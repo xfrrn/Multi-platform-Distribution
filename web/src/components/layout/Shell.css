@@ -22,16 +22,17 @@
   display: grid; place-items: center;
   border-radius: var(--radius-md);
 }
-.brand-mark { color: #fff; background: var(--fg); margin-bottom: 16px; }
+.brand-mark { color: #fff; background: var(--accent); margin-bottom: 16px; }
 .side-btn {
   border: 0;
   color: var(--muted);
   background: transparent;
   cursor: pointer;
-  transition: background var(--motion-fast), color var(--motion-fast);
+  transition: background var(--motion-fast), color var(--motion-fast), box-shadow var(--motion-fast);
 }
+.side-btn:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
 .side-btn:hover,
-.side-btn-active { color: var(--fg); background: var(--border-soft); }
+.side-btn-active { color: var(--accent); background: var(--accent-bg); }
 .side-btn-bottom { margin-top: auto; }
 
 .workspace {

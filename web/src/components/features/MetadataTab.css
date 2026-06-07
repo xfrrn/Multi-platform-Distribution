@@ -5,8 +5,10 @@
   padding: 0 12px; min-height: 38px;
   border: 1px solid var(--border); border-radius: var(--radius-md);
   background: var(--surface); color: var(--fg); font-size: var(--text-sm); cursor: pointer;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast), color var(--motion-fast);
 }
-.meta-seg-active { color: #fff; border-color: var(--fg); background: var(--fg); }
+.meta-seg:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+.meta-seg-active { color: #fff; border-color: var(--accent); background: var(--accent); }
 .url-line {
   margin-bottom: 10px; padding: 10px 12px;
   border: 1px solid var(--border); border-radius: var(--radius-md);
@@ -22,7 +24,10 @@
 .icon-btn {
   width: 38px; min-height: 38px; display: grid; place-items: center;
   border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--fg); cursor: pointer;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
 }
+.icon-btn:hover { background: var(--border-soft); }
+.icon-btn:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
 
 @media (max-width: 860px) {
   .meta-panel { grid-column: auto; }

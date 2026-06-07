@@ -15,6 +15,7 @@
   cursor: pointer;
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast);
 }
+.app-card:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
 .app-card:hover {
   border-color: color-mix(in oklab, var(--accent) 50%, transparent);
   box-shadow: var(--shadow-md);
@@ -26,7 +27,7 @@
   overflow: hidden;
   border-radius: var(--radius-md);
   color: #fff;
-  background: linear-gradient(135deg, #223047, #26736e);
+  background: var(--accent-gradient);
   font-weight: 700;
   font-size: var(--text-2xl);
 }
