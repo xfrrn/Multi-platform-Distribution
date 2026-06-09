@@ -589,13 +589,17 @@ func (c *Client) postJSON(ctx context.Context, endpoint string, payload any, out
 		if err != nil {
 			return fmt.Errorf("call anyshare %s: %w", endpoint, err)
 		}
-		if resp.StatusCode == http.StatusUnauthorized && c.loginCookie != "" && attempt == 0 {
+		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 			resp.Body.Close()
 
 			c.mu.Lock()
 			c.authorization = ""
-			err = c.refreshAuthorizationLocked(ctx, true)
+			if c.loginCookie != "" {
+				err = c.refreshAuthorizationLocked(ctx, true)
+			} else {
+				err = c.visitSharingLink(ctx)
+			}
 			c.mu.Unlock()
 			if err != nil {
 				return err

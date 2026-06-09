@@ -353,6 +353,80 @@ func TestClientRefreshesAuthorizationOnInterval(t *testing.T) {
 	}
 }
 
+func TestClientRetriesPostJSONAfterUnauthorizedAnonymous(t *testing.T) {
+	const sharingID = "AA121158B8D88B4E7C9019EA24FD02E541"
+	var linkVisits, beginCalls int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/link/" + sharingID:
+			linkVisits++
+			if linkVisits == 1 {
+				w.Header().Add("Set-Cookie", "link_token:"+sharingID+"=stale-anon-token; Path=/")
+			} else {
+				w.Header().Add("Set-Cookie", "link_token:"+sharingID+"=fresh-anon-token; Path=/")
+			}
+			w.WriteHeader(http.StatusOK)
+		case "/api/efast/v1/file/osbeginupload":
+			beginCalls++
+			if beginCalls == 1 {
+				if r.Header.Get("Authorization") != "Bearer stale-anon-token" {
+					t.Fatalf("expected stale anon token on first attempt, got %q", r.Header.Get("Authorization"))
+				}
+				http.Error(w, "token expired", http.StatusUnauthorized)
+				return
+			}
+			if r.Header.Get("Authorization") != "Bearer fresh-anon-token" {
+				t.Fatalf("expected fresh anon token on retry, got %q", r.Header.Get("Authorization"))
+			}
+			writeJSON(w, map[string]any{
+				"docid": "gns://file-docid",
+				"rev":   "file-rev",
+				"authrequest": []string{
+					"POST",
+					serverURL(r) + "/upload",
+					"AWSAccessKeyId: key",
+					"Content-Type: application/octet-stream",
+					"Policy: policy",
+					"Signature: signature",
+					"key: object-key",
+				},
+			})
+		case "/upload":
+			w.WriteHeader(http.StatusNoContent)
+		case "/api/efast/v1/file/osendupload":
+			if r.Header.Get("Authorization") != "Bearer fresh-anon-token" {
+				t.Fatalf("expected fresh anon token on endupload, got %q", r.Header.Get("Authorization"))
+			}
+			writeJSON(w, map[string]any{"ok": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(context.Background(), Config{
+		BaseURL:     server.URL,
+		SharingLink: server.URL + "/link/" + sharingID,
+		UploadPath:  "gns://upload-dir",
+		Timeout:     time.Second,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.Upload(context.Background(), "installer.exe", strings.NewReader("payload"))
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	if linkVisits != 2 {
+		t.Fatalf("expected sharing link visited twice (initial + retry), got %d", linkVisits)
+	}
+	if beginCalls != 2 {
+		t.Fatalf("expected beginupload called twice, got %d", beginCalls)
+	}
+}
+
 func TestClientRejectsUnexpectedDownloadAuth(t *testing.T) {
 	_, err := parseDownloadAuth([]string{"POST", "https://example.test/file"})
 	if err == nil {
