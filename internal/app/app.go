@@ -30,6 +30,12 @@ func New(cfg config.Config) (*App, error) {
 		return nil, errors.New("DATABASE_URL is required")
 	}
 
+	if cfg.AutoMigrate {
+		if err := database.EnsureDatabase(context.Background(), cfg.DatabaseURL); err != nil {
+			return nil, fmt.Errorf("ensure database: %w", err)
+		}
+	}
+
 	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
@@ -39,9 +45,9 @@ func New(cfg config.Config) (*App, error) {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 	if cfg.AutoMigrate {
-		if err := database.Migrate(context.Background(), db); err != nil {
+		if err := database.EnsureSchema(context.Background(), db); err != nil {
 			db.Close()
-			return nil, fmt.Errorf("migrate database: %w", err)
+			return nil, fmt.Errorf("initialize database schema: %w", err)
 		}
 	}
 

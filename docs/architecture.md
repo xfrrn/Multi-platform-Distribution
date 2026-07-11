@@ -11,7 +11,7 @@ The project starts as a modular monolith:
 - `internal/storage`: object storage abstraction, local implementation, and S3-compatible implementation.
 - `internal/metadata`: generic update manifest, Electron `latest.yml`, and appcast XML rendering.
 - `internal/auth`: JWT issuing and verification.
-- `internal/database`: embedded SQL migrations.
+- `internal/database`: startup database/schema initialization.
 
 The first development phase focuses on the release pipeline:
 

@@ -18,7 +18,7 @@ Desktop app update server written in Go. It manages apps, releases, uploaded art
    docker compose -f deploy/docker-compose.yml up -d postgres update-server web
    ```
 
-   The server runs database migrations automatically when `AUTO_MIGRATE=true`.
+   The server creates the configured database when missing and ensures required tables, columns, and indexes when `AUTO_MIGRATE=true`.
    The web console is available at `http://localhost:5173`.
 
 2. For direct local development, copy `.env.example` to `.env`, start PostgreSQL, then run:
