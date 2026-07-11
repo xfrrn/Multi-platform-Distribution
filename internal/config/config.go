@@ -18,6 +18,7 @@ type Config struct {
 	BootstrapPassword       string
 	PublicBaseURL           string
 	AutoMigrate             bool
+	WebDistDir              string
 	StorageDriver           string
 	LocalStoragePath        string
 	S3Endpoint              string
@@ -49,6 +50,7 @@ func Load() Config {
 		BootstrapPassword:       env("BOOTSTRAP_ADMIN_PASSWORD", ""),
 		PublicBaseURL:           strings.TrimRight(env("PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
 		AutoMigrate:             envBool("AUTO_MIGRATE", true),
+		WebDistDir:              env("WEB_DIST_DIR", "web/dist"),
 		StorageDriver:           env("STORAGE_DRIVER", "local"),
 		LocalStoragePath:        env("LOCAL_STORAGE_PATH", "data/uploads"),
 		S3Endpoint:              env("S3_ENDPOINT", ""),

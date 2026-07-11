@@ -12,24 +12,28 @@ Desktop app update server written in Go. It manages apps, releases, uploaded art
 
 ## Local setup
 
-1. Start PostgreSQL, the API server, and the web console:
+1. Start PostgreSQL and the app:
 
    ```powershell
-   docker compose -f deploy/docker-compose.yml up -d postgres update-server web
+   docker compose -f deploy/docker-compose.yml up -d postgres update-server
    ```
 
    The server creates the configured database when missing and ensures required tables, columns, and indexes when `AUTO_MIGRATE=true`.
-   The web console is available at `http://localhost:5173`.
+   The web console and API are available at `http://localhost:8080`.
 
-2. For direct local development, copy `.env.example` to `.env`, start PostgreSQL, then run:
+2. For direct local development, build the web console once, copy `.env.example` to `.env`, start PostgreSQL, then run:
 
    ```powershell
+   cd web
+   npm install
+   npm run build
+   cd ..
    go run ./cmd/server
    ```
 
-   The server automatically loads `.env` when present; real environment variables still take precedence.
+   The server automatically loads `.env` when present; real environment variables still take precedence. Set `WEB_DIST_DIR` if the built web files are not in `web/dist`.
 
-3. Start the web console:
+3. For frontend-only development, keep using Vite:
 
    ```powershell
    cd web

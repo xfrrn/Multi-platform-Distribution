@@ -2,6 +2,9 @@ package http
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"multi-platform-distribution/internal/auth"
 	"multi-platform-distribution/internal/config"
@@ -82,5 +85,39 @@ func NewRouter(cfg config.Config, services Services) *gin.Engine {
 	admin.DELETE("/artifacts/:artifactId", artifacts.Archive)
 	admin.POST("/releases/:releaseId/artifacts", artifacts.Upload)
 
+	serveWebConsole(router, cfg.WebDistDir)
+
 	return router
+}
+
+func serveWebConsole(router *gin.Engine, distDir string) {
+	if distDir == "" {
+		return
+	}
+
+	index := filepath.Join(distDir, "index.html")
+	if info, err := os.Stat(index); err != nil || info.IsDir() {
+		return
+	}
+
+	router.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if path == "/api" || strings.HasPrefix(path, "/api/") ||
+			path == "/downloads" || strings.HasPrefix(path, "/downloads/") ||
+			path == "/healthz" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+
+		clean := filepath.Clean(strings.TrimPrefix(path, "/"))
+		if clean != "." && !strings.HasPrefix(clean, "..") {
+			file := filepath.Join(distDir, clean)
+			if info, err := os.Stat(file); err == nil && !info.IsDir() {
+				c.File(file)
+				return
+			}
+		}
+
+		c.File(index)
+	})
 }
